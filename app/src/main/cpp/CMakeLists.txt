@@ -1,10 +1,14 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("thermalcamera")
 
+# Allow FetchContent_Populate to be called directly (CMake 3.30+ deprecates it).
+cmake_policy(SET CMP0169 OLD)
+
 include(FetchContent)
 
 # ─── libusb 1.0.27 ────────────────────────────────────────────────────────
-# libusb uses autotools, not CMake, so we fetch and compile source files directly.
+# libusb uses autotools, not CMake, so we fetch sources and compile them directly.
+# Source list mirrors the official android/jni/libusb.mk from the libusb repo.
 FetchContent_Declare(
     libusb_src
     GIT_REPOSITORY https://github.com/libusb/libusb.git
@@ -16,8 +20,6 @@ if(NOT libusb_src_POPULATED)
     FetchContent_Populate(libusb_src)
 endif()
 
-# Build libusb as a static library using the Android backend.
-# Source list mirrors the official android/jni/libusb.mk from the libusb repository.
 add_library(usb STATIC
     ${libusb_src_SOURCE_DIR}/libusb/core.c
     ${libusb_src_SOURCE_DIR}/libusb/descriptor.c
@@ -45,13 +47,10 @@ target_compile_options(usb PRIVATE
 
 target_link_libraries(usb PRIVATE log)
 
-# Create the LibUSB::LibUSB alias expected by libuvc's FindLibUSB.cmake.
-# Because the target already exists, libuvc's cmake guard
-#   if (NOT TARGET LibUSB::LibUSB)
-# will be skipped, preventing a failed pkg-config look-up.
-add_library(LibUSB::LibUSB ALIAS usb)
-
-# ─── libuvc ───────────────────────────────────────────────────────────────
+# ─── libuvc (v0.0.7 + fixes, pinned commit) ───────────────────────────────
+# We compile libuvc sources directly instead of using add_subdirectory() on
+# its CMakeLists.txt.  add_subdirectory() triggers libuvc's install(EXPORT)
+# which fails because our "usb" target is not in any install export set.
 FetchContent_Declare(
     libuvc_src
     GIT_REPOSITORY https://github.com/libuvc/libuvc.git
@@ -62,15 +61,38 @@ if(NOT libuvc_src_POPULATED)
     FetchContent_Populate(libuvc_src)
 endif()
 
-# Disable optional components; JPEG not available → frame-mjpeg.c excluded automatically.
-set(BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
-set(BUILD_TEST    OFF CACHE BOOL "" FORCE)
-set(CMAKE_BUILD_TARGET "Static" CACHE STRING "" FORCE)
+# Generate libuvc_config.h from the upstream template.
+# JPEG is not available in the NDK build so LIBUVC_HAS_JPEG is left undefined.
+set(libuvc_VERSION_MAJOR 0)
+set(libuvc_VERSION_MINOR 0)
+set(libuvc_VERSION_PATCH 7)
+set(libuvc_VERSION       "0.0.7")
+configure_file(
+    ${libuvc_src_SOURCE_DIR}/include/libuvc/libuvc_config.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/libuvc/libuvc_config.h
+    @ONLY
+)
 
-add_subdirectory(
-    ${libuvc_src_SOURCE_DIR}
-    ${libuvc_src_BINARY_DIR}
-    EXCLUDE_FROM_ALL
+add_library(uvc STATIC
+    ${libuvc_src_SOURCE_DIR}/src/ctrl.c
+    ${libuvc_src_SOURCE_DIR}/src/ctrl-gen.c
+    ${libuvc_src_SOURCE_DIR}/src/device.c
+    ${libuvc_src_SOURCE_DIR}/src/diag.c
+    ${libuvc_src_SOURCE_DIR}/src/frame.c
+    ${libuvc_src_SOURCE_DIR}/src/init.c
+    ${libuvc_src_SOURCE_DIR}/src/stream.c
+    ${libuvc_src_SOURCE_DIR}/src/misc.c
+)
+
+target_include_directories(uvc
+    PUBLIC
+        ${libuvc_src_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_BINARY_DIR}/include
+)
+
+target_link_libraries(uvc
+    PUBLIC  usb
+    PRIVATE log
 )
 
 # ─── JNI shared library ───────────────────────────────────────────────────
@@ -78,7 +100,7 @@ add_library(thermalcamera SHARED native-lib.cpp)
 
 target_link_libraries(thermalcamera
     PRIVATE
-        uvc_static
+        uvc
         usb
         log
         android
