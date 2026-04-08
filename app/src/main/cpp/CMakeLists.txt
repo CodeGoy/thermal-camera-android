@@ -98,6 +98,9 @@ target_link_libraries(uvc
 # ─── JNI shared library ───────────────────────────────────────────────────
 add_library(thermalcamera SHARED native-lib.cpp)
 
+# 16 KB page alignment required for Android 15+ (API 35)
+target_link_options(thermalcamera PRIVATE "-Wl,-z,max-page-size=16384")
+
 target_link_libraries(thermalcamera
     PRIVATE
         uvc
