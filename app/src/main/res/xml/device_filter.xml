@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Match any USB video class device (UVC cameras) -->
-    <usb-device class="239" subclass="2" />
+    <!-- Infiray/Topdon thermal camera - exact match from user's device -->
+    <usb-device vendor-id="3034" product-id="22576" />
+    <!-- Infiray P2 Pro thermal camera -->
+    <usb-device vendor-id="3034" product-id="22592" />
+    <!-- Topdon TC001 thermal camera -->
+    <usb-device vendor-id="3034" product-id="22593" />
+    <!-- Generic Infiray thermal cameras -->
+    <usb-device vendor-id="3034" />
 </resources>

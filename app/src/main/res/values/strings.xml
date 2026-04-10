@@ -1,4 +1,9 @@
 <resources>
     <string name="app_name">Thermal Camera</string>
-    <string name="hello_world">Hello World!</string>
+    <string name="waiting_for_camera">Connect thermal camera</string>
+    <string name="colormap">Color</string>
+    <string name="contrast_down">-</string>
+    <string name="contrast_up">+</string>
+    <string name="reset">1:1</string>
+    <string name="capture">Snap</string>
 </resources>
