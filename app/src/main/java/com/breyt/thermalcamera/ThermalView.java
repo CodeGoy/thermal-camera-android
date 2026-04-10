@@ -239,9 +239,10 @@ public class ThermalView extends View {
         canvas.scale(scaleFactor, scaleFactor);
         canvas.translate(-viewWidth / 2f + translateX, -viewHeight / 2f + translateY);
 
-        // Apply rotation around center of the image area
+        // Apply rotation and horizontal flip around center of the image area
         float centerX = left + drawWidth / 2f;
         float centerY = top + drawHeight / 2f;
+        canvas.scale(-1f, 1f, centerX, centerY);  // Flip horizontally to correct mirror
         canvas.rotate(rotationDegrees, centerX, centerY);
 
         // Adjust draw rect for rotation (swap dimensions for 90/270)
@@ -351,6 +352,7 @@ public class ThermalView extends View {
 
     /**
      * Draws a label near a marker, adjusting position to stay within bounds.
+     * Counter-rotates and counter-flips so text remains upright.
      */
     private void drawMarkerLabel(Canvas canvas, String text, float markerX, float markerY,
                                   float left, float top, float right, float bottom) {
@@ -375,7 +377,12 @@ public class ThermalView extends View {
             y = markerY + offsetY;
         }
 
+        // Counter-rotate and counter-flip so text stays upright
+        canvas.save();
+        canvas.rotate(-rotationDegrees, markerX, markerY);
+        canvas.scale(-1f, 1f, markerX, markerY);  // Counter the horizontal flip
         drawTextWithOutline(canvas, text, x, y);
+        canvas.restore();
     }
 
     private void drawHud(Canvas canvas) {
