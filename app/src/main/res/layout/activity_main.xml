@@ -80,6 +80,15 @@
             android:textSize="12sp"
             android:layout_marginEnd="8dp" />
 
+        <!-- Rotate -->
+        <Button
+            android:id="@+id/btn_rotate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/rotate"
+            android:textSize="12sp"
+            android:layout_marginEnd="8dp" />
+
         <!-- Screenshot -->
         <Button
             android:id="@+id/btn_screenshot"

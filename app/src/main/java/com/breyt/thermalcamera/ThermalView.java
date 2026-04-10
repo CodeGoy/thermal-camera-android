@@ -41,6 +41,9 @@ public class ThermalView extends View {
     private static final float MIN_SCALE = 1.0f;
     private static final float MAX_SCALE = 5.0f;
 
+    // Rotation (0, 90, 180, 270 degrees)
+    private int rotationDegrees = 0;
+
     // Gesture detectors
     private ScaleGestureDetector scaleDetector;
     private GestureDetector gestureDetector;
@@ -166,6 +169,20 @@ public class ThermalView extends View {
         return scaleFactor;
     }
 
+    /**
+     * Rotates the image by 90 degrees clockwise.
+     * @return The new rotation in degrees (0, 90, 180, or 270)
+     */
+    public int rotate() {
+        rotationDegrees = (rotationDegrees + 90) % 360;
+        invalidate();
+        return rotationDegrees;
+    }
+
+    public int getImageRotation() {
+        return rotationDegrees;
+    }
+
     private void updateFps() {
         frameCount++;
         long now = System.currentTimeMillis();
@@ -196,7 +213,12 @@ public class ThermalView extends View {
         // Calculate scaling to fit view while maintaining aspect ratio
         float viewWidth = getWidth();
         float viewHeight = getHeight();
-        float imageAspect = (float) ThermalData.WIDTH / ThermalData.HEIGHT;
+
+        // For 90/270 rotation, swap the aspect ratio
+        boolean isRotated90or270 = (rotationDegrees == 90 || rotationDegrees == 270);
+        float imageAspect = isRotated90or270
+                ? (float) ThermalData.HEIGHT / ThermalData.WIDTH
+                : (float) ThermalData.WIDTH / ThermalData.HEIGHT;
         float viewAspect = viewWidth / viewHeight;
 
         float drawWidth, drawHeight;
@@ -217,53 +239,71 @@ public class ThermalView extends View {
         canvas.scale(scaleFactor, scaleFactor);
         canvas.translate(-viewWidth / 2f + translateX, -viewHeight / 2f + translateY);
 
+        // Apply rotation around center of the image area
+        float centerX = left + drawWidth / 2f;
+        float centerY = top + drawHeight / 2f;
+        canvas.rotate(rotationDegrees, centerX, centerY);
+
+        // Adjust draw rect for rotation (swap dimensions for 90/270)
+        RectF destRect;
+        if (isRotated90or270) {
+            float rotatedWidth = drawHeight;
+            float rotatedHeight = drawWidth;
+            float rotatedLeft = centerX - rotatedWidth / 2f;
+            float rotatedTop = centerY - rotatedHeight / 2f;
+            destRect = new RectF(rotatedLeft, rotatedTop, rotatedLeft + rotatedWidth, rotatedTop + rotatedHeight);
+        } else {
+            destRect = new RectF(left, top, left + drawWidth, top + drawHeight);
+        }
+
         // Draw thermal image
-        RectF destRect = new RectF(left, top, left + drawWidth, top + drawHeight);
         canvas.drawBitmap(bitmap, null, destRect, bitmapPaint);
 
-        // Scale factors for converting image coords to view coords
-        float scaleX = drawWidth / ThermalData.WIDTH;
-        float scaleY = drawHeight / ThermalData.HEIGHT;
+        // Scale factors for converting image coords to view coords (use destRect)
+        float scaleX = destRect.width() / ThermalData.WIDTH;
+        float scaleY = destRect.height() / ThermalData.HEIGHT;
 
         // Draw crosshairs at center
-        float centerViewX = left + (ThermalData.WIDTH / 2f) * scaleX;
-        float centerViewY = top + (ThermalData.HEIGHT / 2f) * scaleY;
+        float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
+        float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
         float crossSize = 20f;
 
         // Inner
-        canvas.drawLine(centerViewX - crossSize, centerViewY,
-                centerViewX + crossSize, centerViewY, crosshairPaint);
-        canvas.drawLine(centerViewX, centerViewY - crossSize,
-                centerViewX, centerViewY + crossSize, crosshairPaint);
+        canvas.drawLine(crossCenterX - crossSize, crossCenterY,
+                crossCenterX + crossSize, crossCenterY, crosshairPaint);
+        canvas.drawLine(crossCenterX, crossCenterY - crossSize,
+                crossCenterX, crossCenterY + crossSize, crosshairPaint);
 
         // Bounds for label positioning
-        float imgRight = left + drawWidth;
-        float imgBottom = top + drawHeight;
+        float imgLeft = destRect.left;
+        float imgTop = destRect.top;
+        float imgRight = destRect.right;
+        float imgBottom = destRect.bottom;
 
         // Draw max temperature marker (red circle)
-        float maxViewX = left + thermalData.maxCol * scaleX;
-        float maxViewY = top + thermalData.maxRow * scaleY;
+        float maxViewX = destRect.left + thermalData.maxCol * scaleX;
+        float maxViewY = destRect.top + thermalData.maxRow * scaleY;
         markerPaint.setColor(Color.RED);
         canvas.drawCircle(maxViewX, maxViewY, 12f, markerPaint);
         String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
-        drawMarkerLabel(canvas, maxLabel, maxViewX, maxViewY, left, top, imgRight, imgBottom);
+        drawMarkerLabel(canvas, maxLabel, maxViewX, maxViewY, imgLeft, imgTop, imgRight, imgBottom);
 
         // Draw min temperature marker (blue circle)
-        float minViewX = left + thermalData.minCol * scaleX;
-        float minViewY = top + thermalData.minRow * scaleY;
+        float minViewX = destRect.left + thermalData.minCol * scaleX;
+        float minViewY = destRect.top + thermalData.minRow * scaleY;
         markerPaint.setColor(Color.BLUE);
         canvas.drawCircle(minViewX, minViewY, 12f, markerPaint);
         String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
-        drawMarkerLabel(canvas, minLabel, minViewX, minViewY, left, top, imgRight, imgBottom);
+        drawMarkerLabel(canvas, minLabel, minViewX, minViewY, imgLeft, imgTop, imgRight, imgBottom);
 
         // Draw tap temperature if recent
         if (!Float.isNaN(tapTemp) && System.currentTimeMillis() - tapTime < 3000) {
-            float tapViewX = left + tapX * scaleX;
-            float tapViewY = top + tapY * scaleY;
+            float tapViewX = destRect.left + tapX * scaleX;
+            float tapViewY = destRect.top + tapY * scaleY;
             markerPaint.setColor(Color.GREEN);
             canvas.drawCircle(tapViewX, tapViewY, 10f, markerPaint);
             String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
-            drawMarkerLabel(canvas, tapLabel, tapViewX, tapViewY, left, top, imgRight, imgBottom);
+            drawMarkerLabel(canvas, tapLabel, tapViewX, tapViewY, imgLeft, imgTop, imgRight, imgBottom);
         }
 
         canvas.restore();

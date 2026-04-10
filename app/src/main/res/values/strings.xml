@@ -8,4 +8,5 @@
     <string name="rounding_0_2">0.2</string>
     <string name="rounding_0_5">0.5</string>
     <string name="capture">Snap</string>
+    <string name="rotate">0\u00B0</string>
 </resources>

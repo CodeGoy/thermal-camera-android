@@ -255,6 +255,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             }
         });
 
+        Button btnRotate = findViewById(R.id.btn_rotate);
+        btnRotate.setOnClickListener(v -> {
+            int newRotation = thermalView.rotate();
+            btnRotate.setText(String.format(Locale.US, "%d\u00B0", newRotation));
+        });
+
         findViewById(R.id.btn_screenshot).setOnClickListener(v -> {
             takeScreenshot();
         });
