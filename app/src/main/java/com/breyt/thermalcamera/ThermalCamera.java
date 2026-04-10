@@ -91,12 +91,19 @@ public class ThermalCamera {
      * Closes the camera and releases resources.
      */
     public void close() {
-        nativeClose();
-        isOpen = false;
+        Log.i(TAG, "Closing camera, isOpen=" + isOpen);
+        if (isOpen) {
+            nativeClose();
+            isOpen = false;
+        }
         frameCallback = null;
 
         if (connection != null) {
-            connection.close();
+            try {
+                connection.close();
+            } catch (Exception e) {
+                Log.w(TAG, "Error closing USB connection", e);
+            }
             connection = null;
         }
     }

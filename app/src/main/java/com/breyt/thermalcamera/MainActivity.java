@@ -136,7 +136,14 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 UsbDevice device = getUsbDevice(intent);
                 Log.d(TAG, "USB_DEVICE_DETACHED: device=" + device);
                 Log.i(TAG, "USB device detached: " + device);
-                if (device != null && device.equals(currentDevice)) {
+                // Compare by device name since UsbDevice.equals() may fail after detach
+                if (device != null && currentDevice != null &&
+                        device.getDeviceName().equals(currentDevice.getDeviceName())) {
+                    closeCamera();
+                    updateStatus("Camera disconnected");
+                } else if (thermalCamera.isOpen()) {
+                    // Fallback: close if any camera is open and a device was detached
+                    Log.w(TAG, "Device mismatch on detach, closing camera anyway");
                     closeCamera();
                     updateStatus("Camera disconnected");
                 }
@@ -374,8 +381,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
     private void openCamera(UsbDevice device) {
         if (thermalCamera.isOpen()) {
+            Log.i(TAG, "Closing existing camera before opening new one");
+            updateStatus("Reconnecting...");
             closeCamera();
         }
+
+        updateStatus("Connecting to camera...");
 
         UsbDeviceConnection connection = usbManager.openDevice(device);
         if (connection == null) {
@@ -385,6 +396,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         }
 
         currentDevice = device;
+        updateStatus("Initializing camera...");
 
         if (thermalCamera.open(device, connection)) {
             updateStatus("Starting stream...");

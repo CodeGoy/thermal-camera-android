@@ -10,6 +10,7 @@
 #define LOG_TAG "ThermalCamera"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 // Frame dimensions for Infiray P2 / Topdon TC001
@@ -256,9 +257,25 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeOpen(
 
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    if (g_devh != nullptr) {
-        LOGE("Camera already open");
-        return JNI_FALSE;
+    // Clean up any stale state from previous session
+    if (g_devh != nullptr || g_ctx != nullptr) {
+        LOGW("Cleaning up stale camera state before opening");
+        if (g_streaming) {
+            uvc_stop_streaming(g_devh);
+            g_streaming = false;
+        }
+        if (g_devh) {
+            uvc_close(g_devh);
+            g_devh = nullptr;
+        }
+        if (g_ctx) {
+            uvc_exit(g_ctx);
+            g_ctx = nullptr;
+        }
+        // Reset hysteresis state
+        hasInitialized = false;
+        prevMinRow = prevMinCol = prevMaxRow = prevMaxCol = 0;
+        g_frame_count = 0;
     }
 
     LOGI("Opening camera with fd=%d, VID=%04x, PID=%04x", fd, vendorId, productId);
@@ -392,6 +409,10 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeStopStream(
     }
     g_callback_method = nullptr;
 
+    // Reset hysteresis state
+    hasInitialized = false;
+    prevMinRow = prevMinCol = prevMaxRow = prevMaxCol = 0;
+
     LOGI("Streaming stopped");
 }
 
@@ -422,6 +443,11 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeClose(
         uvc_exit(g_ctx);
         g_ctx = nullptr;
     }
+
+    // Reset hysteresis and frame state
+    hasInitialized = false;
+    prevMinRow = prevMinCol = prevMaxRow = prevMaxCol = 0;
+    g_frame_count = 0;
 
     LOGI("Camera closed");
 }
