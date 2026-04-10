@@ -37,6 +37,25 @@ static inline float rawToCelsius(uint16_t raw) {
 // Frame counter for debug logging
 static int g_frame_count = 0;
 
+// Hysteresis state for min/max marker stability
+static int prevMinRow = 0, prevMinCol = 0;
+static int prevMaxRow = 0, prevMaxCol = 0;
+static bool hasInitialized = false;
+
+// Temperature rounding mode: 0 = none, 1 = 0.2°C, 2 = 0.5°C
+static int g_rounding_mode = 0;
+
+static inline float roundTemperature(float temp) {
+    switch (g_rounding_mode) {
+        case 1: // Round to 0.2
+            return std::round(temp * 5.0f) / 5.0f;
+        case 2: // Round to 0.5
+            return std::round(temp * 2.0f) / 2.0f;
+        default:
+            return temp;
+    }
+}
+
 // Frame callback from libuvc
 static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
     g_frame_count++;
@@ -105,6 +124,44 @@ static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
         }
     }
 
+    // Hysteresis: keep previous location if temperature difference is small
+    // Threshold matches rounding mode: 0.1 (none), 0.2, or 0.5
+    float hysteresisThreshold;
+    switch (g_rounding_mode) {
+        case 1: hysteresisThreshold = 0.2f; break;
+        case 2: hysteresisThreshold = 0.5f; break;
+        default: hysteresisThreshold = 0.1f; break;
+    }
+
+    if (hasInitialized) {
+        // Get temp at previous min location
+        uint8_t lo = thermal_data[prevMinRow * stride + prevMinCol * 2];
+        uint8_t hi = thermal_data[prevMinRow * stride + prevMinCol * 2 + 1];
+        float prevMinLocTemp = rawToCelsius(lo | (hi << 8));
+
+        if (prevMinLocTemp - minTemp < hysteresisThreshold) {
+            minRow = prevMinRow;
+            minCol = prevMinCol;
+            minTemp = prevMinLocTemp;
+        }
+
+        // Same for max location
+        lo = thermal_data[prevMaxRow * stride + prevMaxCol * 2];
+        hi = thermal_data[prevMaxRow * stride + prevMaxCol * 2 + 1];
+        float prevMaxLocTemp = rawToCelsius(lo | (hi << 8));
+
+        if (maxTemp - prevMaxLocTemp < hysteresisThreshold) {
+            maxRow = prevMaxRow;
+            maxCol = prevMaxCol;
+            maxTemp = prevMaxLocTemp;
+        }
+    }
+
+    // Update previous locations
+    prevMinRow = minRow; prevMinCol = minCol;
+    prevMaxRow = maxRow; prevMaxCol = maxCol;
+    hasInitialized = true;
+
     float avgTemp = sumTemp / (THERMAL_HEIGHT * FRAME_WIDTH);
 
     // Center temperature (middle of thermal region)
@@ -114,6 +171,12 @@ static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
     uint8_t chi = thermal_data[centerY * stride + centerX * 2 + 1];
     uint16_t centerRaw = clo | (chi << 8);
     float centerTemp = rawToCelsius(centerRaw);
+
+    // Apply rounding to displayed temperatures
+    centerTemp = roundTemperature(centerTemp);
+    minTemp = roundTemperature(minTemp);
+    maxTemp = roundTemperature(maxTemp);
+    avgTemp = roundTemperature(avgTemp);
 
     // Call Java callback
     if (g_jvm && g_callback_obj && g_callback_method) {
@@ -160,7 +223,7 @@ JNI_OnLoad(JavaVM *vm, void *reserved) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_example_thermalcamera_MainActivity_getLibUvcVersion(
+Java_com_breyt_thermalcamera_MainActivity_getLibUvcVersion(
         JNIEnv *env,
         jobject /* this */) {
     const char *version = LIBUVC_VERSION_STR;
@@ -169,7 +232,7 @@ Java_com_example_thermalcamera_MainActivity_getLibUvcVersion(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_thermalcamera_MainActivity_initUvc(
+Java_com_breyt_thermalcamera_MainActivity_initUvc(
         JNIEnv *env,
         jobject /* this */) {
     uvc_context_t *ctx = nullptr;
@@ -184,7 +247,7 @@ Java_com_example_thermalcamera_MainActivity_initUvc(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_thermalcamera_ThermalCamera_nativeOpen(
+Java_com_breyt_thermalcamera_ThermalCamera_nativeOpen(
         JNIEnv *env,
         jobject /* this */,
         jint fd,
@@ -235,7 +298,7 @@ Java_com_example_thermalcamera_ThermalCamera_nativeOpen(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_thermalcamera_ThermalCamera_nativeStartStream(
+Java_com_breyt_thermalcamera_ThermalCamera_nativeStartStream(
         JNIEnv *env,
         jobject thiz,
         jobject callback) {
@@ -310,7 +373,7 @@ Java_com_example_thermalcamera_ThermalCamera_nativeStartStream(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_example_thermalcamera_ThermalCamera_nativeStopStream(
+Java_com_breyt_thermalcamera_ThermalCamera_nativeStopStream(
         JNIEnv *env,
         jobject /* this */) {
 
@@ -333,7 +396,7 @@ Java_com_example_thermalcamera_ThermalCamera_nativeStopStream(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_example_thermalcamera_ThermalCamera_nativeClose(
+Java_com_breyt_thermalcamera_ThermalCamera_nativeClose(
         JNIEnv *env,
         jobject /* this */) {
 
@@ -364,22 +427,31 @@ Java_com_example_thermalcamera_ThermalCamera_nativeClose(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_thermalcamera_ThermalCamera_nativeIsStreaming(
+Java_com_breyt_thermalcamera_ThermalCamera_nativeIsStreaming(
         JNIEnv *env,
         jobject /* this */) {
     return g_streaming ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_example_thermalcamera_ThermalCamera_getFrameWidth(
+Java_com_breyt_thermalcamera_ThermalCamera_getFrameWidth(
         JNIEnv *env,
         jobject /* this */) {
     return FRAME_WIDTH;
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_example_thermalcamera_ThermalCamera_getImageHeight(
+Java_com_breyt_thermalcamera_ThermalCamera_getImageHeight(
         JNIEnv *env,
         jobject /* this */) {
     return IMAGE_HEIGHT;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_breyt_thermalcamera_ThermalCamera_nativeSetRoundingMode(
+        JNIEnv *env,
+        jobject /* this */,
+        jint mode) {
+    g_rounding_mode = mode;
+    LOGI("Rounding mode set to %d", mode);
 }

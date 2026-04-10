@@ -1,4 +1,4 @@
-package com.example.thermalcamera;
+package com.breyt.thermalcamera;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -39,7 +39,7 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity implements ThermalCamera.FrameCallback {
 
     private static final String TAG = "ThermalCamera";
-    private static final String ACTION_USB_PERMISSION = "com.example.thermalcamera.USB_PERMISSION";
+    private static final String ACTION_USB_PERMISSION = "com.breyt.thermalcamera.USB_PERMISSION";
 
     private UsbManager usbManager;
     private TextView statusText;
@@ -49,6 +49,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private ThermalCamera thermalCamera;
     private UsbDevice currentDevice;
     private UsbDevice pendingDevice;  // Device waiting for permission retry
+    private int currentRoundingMode = ThermalCamera.ROUNDING_NONE;
 
     // Track if usbReceiver is registered
     private boolean usbReceiverRegistered = false;
@@ -236,8 +237,22 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             thermalView.adjustContrast(0.2f);
         });
 
-        findViewById(R.id.btn_reset_zoom).setOnClickListener(v -> {
-            thermalView.resetZoom();
+        Button btnRounding = findViewById(R.id.btn_rounding);
+        btnRounding.setOnClickListener(v -> {
+            // Cycle through: None -> 0.2 -> 0.5 -> None
+            currentRoundingMode = (currentRoundingMode + 1) % 3;
+            thermalCamera.setRoundingMode(currentRoundingMode);
+            switch (currentRoundingMode) {
+                case ThermalCamera.ROUNDING_0_2:
+                    btnRounding.setText(R.string.rounding_0_2);
+                    break;
+                case ThermalCamera.ROUNDING_0_5:
+                    btnRounding.setText(R.string.rounding_0_5);
+                    break;
+                default:
+                    btnRounding.setText(R.string.rounding_none);
+                    break;
+            }
         });
 
         findViewById(R.id.btn_screenshot).setOnClickListener(v -> {

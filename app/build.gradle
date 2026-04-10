@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace 'com.example.thermalcamera'
+    namespace 'com.breyt.thermalcamera'
     compileSdk 35
     ndkVersion "27.3.13750724"
 
     defaultConfig {
-        applicationId "com.example.thermalcamera"
+        applicationId "com.breyt.thermalcamera"
         minSdk 24
         targetSdk 35
         versionCode 1

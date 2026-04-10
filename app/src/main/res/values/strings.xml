@@ -4,6 +4,8 @@
     <string name="colormap">Color</string>
     <string name="contrast_down">-</string>
     <string name="contrast_up">+</string>
-    <string name="reset">1:1</string>
+    <string name="rounding_none">0.0</string>
+    <string name="rounding_0_2">0.2</string>
+    <string name="rounding_0_5">0.5</string>
     <string name="capture">Snap</string>
 </resources>

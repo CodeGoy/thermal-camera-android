@@ -9,7 +9,7 @@
     tools:context=".MainActivity">
 
     <!-- Thermal camera view -->
-    <com.example.thermalcamera.ThermalView
+    <com.breyt.thermalcamera.ThermalView
         android:id="@+id/thermal_view"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -71,12 +71,12 @@
             android:textSize="16sp"
             android:layout_marginEnd="8dp" />
 
-        <!-- Reset zoom -->
+        <!-- Temperature rounding -->
         <Button
-            android:id="@+id/btn_reset_zoom"
+            android:id="@+id/btn_rounding"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/reset"
+            android:text="@string/rounding_none"
             android:textSize="12sp"
             android:layout_marginEnd="8dp" />
 
