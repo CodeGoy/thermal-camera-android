@@ -41,14 +41,16 @@ public class ThermalView extends View {
     private static final float MIN_SCALE = 1.0f;
     private static final float MAX_SCALE = 5.0f;
 
+    private static final boolean SHOW_AVERAGE = false;
+
     // Rotation (0, 90, 180, 270 degrees)
     private int rotationDegrees = 0;
 
     // Mirror mode (horizontal flip for selfie mode)
     private boolean mirrored = false;
 
-    // Temperature scale display
-    private boolean showScale = false;
+    // Temperature scale and min/max points display
+    private boolean showMinMaxPoints = false;
     private Bitmap scaleBitmap;
     private int[] scalePixels;
 
@@ -267,18 +269,18 @@ public class ThermalView extends View {
     }
 
     /**
-     * Sets whether the temperature scale is shown.
+     * Sets whether the min/max temperature points are shown.
      */
-    public void setShowScale(boolean show) {
-        showScale = show;
+    public void setShowMinMaxPoints(boolean show) {
+        showMinMaxPoints = show;
         invalidate();
     }
 
     /**
-     * Returns whether the temperature scale is shown.
+     * Returns whether the min/max temperature points are shown.
      */
-    public boolean isShowingScale() {
-        return showScale;
+    public boolean isShowingMinMaxPoints() {
+        return showMinMaxPoints;
     }
 
     private void updateFps() {
@@ -360,28 +362,32 @@ public class ThermalView extends View {
         float scaleX = destRect.width() / ThermalData.WIDTH;
         float scaleY = destRect.height() / ThermalData.HEIGHT;
 
-        // Draw crosshairs at center
-        float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
-        float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
-        float crossSize = 20f;
+        // Draw crosshairs and min/max markers only when enabled
+        float maxViewX = 0, maxViewY = 0, minViewX = 0, minViewY = 0;
+        if (showMinMaxPoints) {
+            // Draw crosshairs at center
+            float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
+            float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
+            float crossSize = 20f;
 
-        // Inner
-        canvas.drawLine(crossCenterX - crossSize, crossCenterY,
-                crossCenterX + crossSize, crossCenterY, crosshairPaint);
-        canvas.drawLine(crossCenterX, crossCenterY - crossSize,
-                crossCenterX, crossCenterY + crossSize, crosshairPaint);
+            // Inner
+            canvas.drawLine(crossCenterX - crossSize, crossCenterY,
+                    crossCenterX + crossSize, crossCenterY, crosshairPaint);
+            canvas.drawLine(crossCenterX, crossCenterY - crossSize,
+                    crossCenterX, crossCenterY + crossSize, crosshairPaint);
 
-        // Draw max temperature marker (red circle)
-        float maxViewX = destRect.left + thermalData.maxCol * scaleX;
-        float maxViewY = destRect.top + thermalData.maxRow * scaleY;
-        markerPaint.setColor(Color.RED);
-        canvas.drawCircle(maxViewX, maxViewY, 12f, markerPaint);
+            // Draw max temperature marker (red circle)
+            maxViewX = destRect.left + thermalData.maxCol * scaleX;
+            maxViewY = destRect.top + thermalData.maxRow * scaleY;
+            markerPaint.setColor(Color.RED);
+            canvas.drawCircle(maxViewX, maxViewY, 12f, markerPaint);
 
-        // Draw min temperature marker (blue circle)
-        float minViewX = destRect.left + thermalData.minCol * scaleX;
-        float minViewY = destRect.top + thermalData.minRow * scaleY;
-        markerPaint.setColor(Color.BLUE);
-        canvas.drawCircle(minViewX, minViewY, 12f, markerPaint);
+            // Draw min temperature marker (blue circle)
+            minViewX = destRect.left + thermalData.minCol * scaleX;
+            minViewY = destRect.top + thermalData.minRow * scaleY;
+            markerPaint.setColor(Color.BLUE);
+            canvas.drawCircle(minViewX, minViewY, 12f, markerPaint);
+        }
 
         // Draw tap temperature marker if recent
         float tapViewX = 0, tapViewY = 0;
@@ -399,30 +405,30 @@ public class ThermalView extends View {
         canvas.restore();
 
         // Transform marker positions to screen coordinates and draw labels
-        float[] pts = new float[6];
-        pts[0] = maxViewX; pts[1] = maxViewY;
-        pts[2] = minViewX; pts[3] = minViewY;
-        pts[4] = tapViewX; pts[5] = tapViewY;
-        matrix.mapPoints(pts);
+        if (showMinMaxPoints) {
+            float[] pts = new float[6];
+            pts[0] = maxViewX; pts[1] = maxViewY;
+            pts[2] = minViewX; pts[3] = minViewY;
+            pts[4] = tapViewX; pts[5] = tapViewY;
+            matrix.mapPoints(pts);
 
-        String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
-        drawMarkerLabelAtScreen(canvas, maxLabel, pts[0], pts[1]);
+            String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
+            drawMarkerLabelAtScreen(canvas, maxLabel, pts[0], pts[1]);
 
-        String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
-        drawMarkerLabelAtScreen(canvas, minLabel, pts[2], pts[3]);
+            String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+            drawMarkerLabelAtScreen(canvas, minLabel, pts[2], pts[3]);
 
-        if (showTap) {
-            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
-            drawMarkerLabelAtScreen(canvas, tapLabel, pts[4], pts[5]);
+            if (showTap) {
+                String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
+                drawMarkerLabelAtScreen(canvas, tapLabel, pts[4], pts[5]);
+            }
         }
 
         // Draw HUD overlay (not affected by zoom)
         drawHud(canvas);
 
-        // Draw temperature scale if enabled
-        if (showScale) {
-            drawTemperatureScale(canvas);
-        }
+        // Always draw temperature scale
+        drawTemperatureScale(canvas);
     }
 
     private void applyColormap() {
@@ -541,9 +547,9 @@ public class ThermalView extends View {
     private void drawTemperatureScale(Canvas canvas) {
         if (thermalData == null) return;
 
-        float padding = 16f;
-        float scaleWidth = 30f;
-        float scaleHeight = getHeight() * 0.6f;
+        float padding = 12f;
+        float scaleWidth = 20f;
+        float scaleHeight = getHeight() * 0.45f;
         float scaleRight = getWidth() - padding;
         float scaleLeft = scaleRight - scaleWidth;
         float scaleTop = (getHeight() - scaleHeight) / 2f;
@@ -564,40 +570,41 @@ public class ThermalView extends View {
         scaleBitmap.setPixels(scalePixels, 0, 1, 0, 0, 1, bitmapHeight);
 
         // Draw scale background
-        canvas.drawRoundRect(scaleLeft - 4, scaleTop - 4, scaleRight + 4, scaleBottom + 4,
-                6f, 6f, hudBackgroundPaint);
+        canvas.drawRoundRect(scaleLeft - 3, scaleTop - 3, scaleRight + 3, scaleBottom + 3,
+                4f, 4f, hudBackgroundPaint);
 
         // Draw scale gradient
         RectF scaleRect = new RectF(scaleLeft, scaleTop, scaleRight, scaleBottom);
         canvas.drawBitmap(scaleBitmap, null, scaleRect, bitmapPaint);
 
         // Draw temperature labels
-        float textOffset = scaleWidth + 8f;
-        hudTextPaint.setTextSize(24f);
+        hudTextPaint.setTextSize(20f);
 
         // Max temperature (top)
         String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
-        canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 8f,
-                scaleTop + 8f, hudTextPaint);
+        canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 6f,
+                scaleTop + 6f, hudTextPaint);
 
         // Min temperature (bottom)
         String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
-        canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 8f,
+        canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 6f,
                 scaleBottom, hudTextPaint);
 
-        // Average temperature (middle, with marker)
-        float avgNormalized = (thermalData.avgTemp - thermalData.minTemp) /
-                (thermalData.maxTemp - thermalData.minTemp);
-        avgNormalized = Math.max(0f, Math.min(1f, avgNormalized));
-        float avgY = scaleBottom - avgNormalized * scaleHeight;
+        if (SHOW_AVERAGE) {
+            // Average temperature (middle, with marker)
+            float avgNormalized = (thermalData.avgTemp - thermalData.minTemp) /
+                    (thermalData.maxTemp - thermalData.minTemp);
+            avgNormalized = Math.max(0f, Math.min(1f, avgNormalized));
+            float avgY = scaleBottom - avgNormalized * scaleHeight;
 
-        // Draw avg marker line
-        crosshairPaint.setStrokeWidth(2f);
-        canvas.drawLine(scaleLeft - 6f, avgY, scaleRight + 6f, avgY, crosshairPaint);
+            // Draw avg marker line
+            crosshairPaint.setStrokeWidth(2f);
+            canvas.drawLine(scaleLeft - 4f, avgY, scaleRight + 4f, avgY, crosshairPaint);
 
-        String avgLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.avgTemp);
-        float avgLabelX = scaleLeft - hudTextPaint.measureText(avgLabel) - 12f;
-        canvas.drawText(avgLabel, avgLabelX, avgY + 6f, hudTextPaint);
+            String avgLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.avgTemp);
+            float avgLabelX = scaleLeft - hudTextPaint.measureText(avgLabel) - 8f;
+            canvas.drawText(avgLabel, avgLabelX, avgY + 5f, hudTextPaint);
+        }
 
         // Reset text size
         hudTextPaint.setTextSize(32f);

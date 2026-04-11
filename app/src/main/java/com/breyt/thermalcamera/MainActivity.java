@@ -392,8 +392,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         popup.getMenu().findItem(R.id.menu_rounding_0_5).setChecked(
                 currentRoundingMode == ThermalCamera.ROUNDING_0_5);
 
-        // Update scale checkbox
-        popup.getMenu().findItem(R.id.menu_show_scale).setChecked(thermalView.isShowingScale());
+        // Update min/max points checkbox
+        popup.getMenu().findItem(R.id.menu_show_scale).setChecked(thermalView.isShowingMinMaxPoints());
 
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
@@ -423,7 +423,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 saveSettings();
                 keepOpen = true;
             } else if (id == R.id.menu_show_scale) {
-                thermalView.setShowScale(!thermalView.isShowingScale());
+                thermalView.setShowMinMaxPoints(!thermalView.isShowingMinMaxPoints());
                 saveSettings();
                 keepOpen = true;
             } else if (id == R.id.menu_camera_info) {
@@ -960,7 +960,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         editor.putBoolean(PREF_MIRRORED, thermalView.isMirrored());
         editor.putInt(PREF_ROUNDING, currentRoundingMode);
         editor.putBoolean(PREF_ROTATION_LOCK, rotationLockEnabled);
-        editor.putBoolean(PREF_SHOW_SCALE, thermalView.isShowingScale());
+        editor.putBoolean(PREF_SHOW_SCALE, thermalView.isShowingMinMaxPoints());
         editor.apply();
     }
 
@@ -973,7 +973,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         currentRoundingMode = prefs.getInt(PREF_ROUNDING, ThermalCamera.ROUNDING_NONE);
         thermalCamera.setRoundingMode(currentRoundingMode);
         rotationLockEnabled = prefs.getBoolean(PREF_ROTATION_LOCK, true);
-        thermalView.setShowScale(prefs.getBoolean(PREF_SHOW_SCALE, false));
+        thermalView.setShowMinMaxPoints(prefs.getBoolean(PREF_SHOW_SCALE, false));
     }
 
     /** Returns the libuvc version string (implemented in native-lib.cpp). */
