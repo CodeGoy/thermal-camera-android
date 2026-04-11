@@ -198,12 +198,8 @@ public class ThermalView extends View {
         super.onDraw(canvas);
 
         if (thermalData == null || thermalData.imageData == null) {
-            // Draw placeholder
+            // Draw placeholder background only - status text is handled by MainActivity
             canvas.drawColor(Color.DKGRAY);
-            textPaint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("Waiting for camera...",
-                    getWidth() / 2f, getHeight() / 2f, textPaint);
-            textPaint.setTextAlign(Paint.Align.LEFT);
             return;
         }
 
