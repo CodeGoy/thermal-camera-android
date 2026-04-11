@@ -3,6 +3,8 @@
 #include <atomic>
 #include <mutex>
 #include <cmath>
+#include <thread>
+#include <chrono>
 #include <android/log.h>
 #include <libusb.h>
 #include "libuvc/libuvc.h"
@@ -302,12 +304,25 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeOpen(
 
     // Wrap the Android USB file descriptor directly with libuvc
     // uvc_wrap takes: file descriptor, context, output device handle
-    res = uvc_wrap(fd, g_ctx, &g_devh);
-    if (res < 0) {
-        LOGE("uvc_wrap failed: %s", uvc_strerror(res));
-        uvc_exit(g_ctx);
-        g_ctx = nullptr;
-        return JNI_FALSE;
+    // Retry with delay if device is busy (common when reconnecting quickly)
+    const int maxRetries = 3;
+    const int retryDelayMs = 100;
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        res = uvc_wrap(fd, g_ctx, &g_devh);
+        if (res == UVC_SUCCESS) {
+            break;
+        }
+        if (res == UVC_ERROR_BUSY && attempt < maxRetries) {
+            LOGW("uvc_wrap returned BUSY, retrying in %dms (attempt %d/%d)",
+                 retryDelayMs, attempt, maxRetries);
+            std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
+        } else {
+            LOGE("uvc_wrap failed: %s (attempt %d/%d)", uvc_strerror(res), attempt, maxRetries);
+            uvc_exit(g_ctx);
+            g_ctx = nullptr;
+            return JNI_FALSE;
+        }
     }
 
     LOGI("Camera opened successfully");

@@ -222,10 +222,13 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         registerUsbReceiver();
 
         // Check if launched via USB device attachment intent (Android auto-grants permission)
-        handleUsbAttachmentIntent(getIntent());
+        boolean handledViaIntent = handleUsbAttachmentIntent(getIntent());
 
-        // Also check for already-connected devices
-        checkConnectedDevices();
+        // Only check for already-connected devices if we didn't already handle one via intent
+        // This prevents race conditions when both paths try to open the same device
+        if (!handledViaIntent) {
+            checkConnectedDevices();
+        }
     }
 
     @Override
@@ -235,7 +238,10 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         handleUsbAttachmentIntent(intent);
     }
 
-    private void handleUsbAttachmentIntent(Intent intent) {
+    /**
+     * Handles USB attachment intent. Returns true if a device was handled.
+     */
+    private boolean handleUsbAttachmentIntent(Intent intent) {
         if (intent != null && UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
             UsbDevice device = getUsbDevice(intent);
             if (device != null) {
@@ -248,8 +254,10 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                     // Shouldn't happen, but request just in case
                     requestUsbPermission(device);
                 }
+                return true;
             }
         }
+        return false;
     }
 
     private void setupButtons() {
@@ -450,11 +458,13 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     }
 
     private void openCamera(UsbDevice device) {
+        // Always close any existing camera, even if isOpen() is false
+        // This ensures native resources are released before opening a new device
         if (thermalCamera.isOpen()) {
             Log.i(TAG, "Closing existing camera before opening new one");
             updateStatus("Reconnecting...");
-            closeCamera();
         }
+        closeCamera();
 
         updateStatus("Connecting to camera...");
 
@@ -479,6 +489,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         } else {
             updateStatus("Failed to open camera");
             connection.close();
+            currentDevice = null;
         }
     }
 
