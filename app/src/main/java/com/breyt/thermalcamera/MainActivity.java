@@ -18,6 +18,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.hardware.SensorManager;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -25,13 +26,18 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.view.OrientationEventListener;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -53,6 +59,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private static final String PREF_ROTATION = "rotation";
     private static final String PREF_MIRRORED = "mirrored";
     private static final String PREF_ROUNDING = "rounding";
+    private static final String PREF_ROTATION_LOCK = "rotationLock";
 
     private UsbManager usbManager;
     private TextView statusText;
@@ -62,6 +69,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private TextView txtRotation;
     private View colormapPreview;
     private ImageButton btnMirror;
+    private ImageView iconRotationLock;
+
+    // Rotation lock - when enabled, image rotates with device orientation
+    private boolean rotationLockEnabled = true;
+    private OrientationEventListener orientationListener;
+    private int lastDeviceRotation = -1;  // Tracks device orientation (0, 90, 180, 270), -1 = not initialized
 
     private ThermalCamera thermalCamera;
     private UsbDevice currentDevice;
@@ -74,6 +87,13 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private String pendingPermissionDeviceName = null;
     // Track device waiting for camera permission
     private UsbDevice deviceAwaitingCameraPermission = null;
+    // Track if we're currently in the process of opening a camera
+    private volatile boolean isOpeningCamera = false;
+
+    // Background thread for camera operations to avoid blocking UI
+    private HandlerThread cameraThread;
+    private Handler cameraHandler;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     // Camera permission launcher - required for UVC devices on Android 9+
     private final ActivityResultLauncher<String> cameraPermissionLauncher =
@@ -119,6 +139,11 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                     }
                     if (granted) {
                         if (device != null) {
+                            // Skip if already open/opening
+                            if (thermalCamera.isOpen() || isOpeningCamera) {
+                                Log.d(TAG, "Camera already open/opening, ignoring permission grant");
+                                return;
+                            }
                             Log.i(TAG, "USB permission granted for device: " + device.getDeviceName());
                             openCamera(device);
                         }
@@ -126,6 +151,11 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                         // On Android 15+, the broadcast may say denied but hasPermission() might still work
                         // This happens when the device matches device_filter.xml
                         if (device != null && usbManager.hasPermission(device)) {
+                            // Skip if already open/opening
+                            if (thermalCamera.isOpen() || isOpeningCamera) {
+                                Log.d(TAG, "Camera already open/opening, ignoring permission grant");
+                                return;
+                            }
                             Log.i(TAG, "Broadcast said denied but hasPermission() is true - opening camera");
                             openCamera(device);
                         } else {
@@ -146,6 +176,13 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 UsbDevice device = getUsbDevice(intent);
                 Log.d(TAG, "USB_DEVICE_ATTACHED: device=" + device);
                 if (device != null) {
+                    // Skip if camera is already open or being opened for this device
+                    if (currentDevice != null &&
+                            currentDevice.getDeviceName().equals(device.getDeviceName()) &&
+                            (thermalCamera.isOpen() || isOpeningCamera)) {
+                        Log.d(TAG, "Camera already open/opening for this device, ignoring attach broadcast");
+                        return;
+                    }
                     Log.i(TAG, "USB device attached: " + device.getDeviceName());
                     requestUsbPermission(device);
                 }
@@ -195,19 +232,39 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         thermalCamera = new ThermalCamera();
 
+        // Initialize background thread for camera operations
+        cameraThread = new HandlerThread("CameraThread");
+        cameraThread.start();
+        cameraHandler = new Handler(cameraThread.getLooper());
+
         // Load saved settings
         loadSettings();
 
         // Setup button handlers
         setupButtons();
 
-        // Tap status text to retry permission
+        // Setup orientation listener for rotation lock feature
+        setupOrientationListener();
+
+        // Tap status text to retry connection
         statusText.setOnClickListener(v -> {
             // Clear pending state so retry is treated as fresh user-initiated request
             pendingPermissionDeviceName = null;
             if (pendingDevice != null) {
-                Log.i(TAG, "Retrying permission for pending device (user-initiated)");
-                requestUsbPermission(pendingDevice);
+                // Verify device is still connected
+                if (!usbManager.getDeviceList().containsKey(pendingDevice.getDeviceName())) {
+                    Log.w(TAG, "Pending device no longer connected, scanning for devices");
+                    pendingDevice = null;
+                    checkConnectedDevices();
+                    return;
+                }
+                Log.i(TAG, "Retrying connection for pending device (user-initiated)");
+                // Check if we already have permission - if so, try opening directly
+                if (usbManager.hasPermission(pendingDevice)) {
+                    openCamera(pendingDevice);
+                } else {
+                    requestUsbPermission(pendingDevice);
+                }
             } else {
                 // Re-scan for devices
                 checkConnectedDevices();
@@ -265,6 +322,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         txtRotation = findViewById(R.id.txt_rotation);
         colormapPreview = findViewById(R.id.colormap_preview);
         btnMirror = findViewById(R.id.btn_mirror);
+        iconRotationLock = findViewById(R.id.icon_rotation_lock);
 
         // Colormap button - cycle through colormaps
         findViewById(R.id.btn_colormap).setOnClickListener(v -> {
@@ -273,11 +331,22 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             saveSettings();
         });
 
-        // Rotate button - rotate 90 degrees
-        findViewById(R.id.btn_rotate).setOnClickListener(v -> {
+        // Rotate button - rotate 90 degrees (manual rotation)
+        ImageButton btnRotate = findViewById(R.id.btn_rotate);
+        btnRotate.setOnClickListener(v -> {
             thermalView.rotate();
             updateRotationLabel();
             saveSettings();
+        });
+
+        // Long-press rotate button to toggle rotation lock
+        btnRotate.setOnLongClickListener(v -> {
+            rotationLockEnabled = !rotationLockEnabled;
+            updateRotationLockIcon();
+            saveSettings();
+            String message = rotationLockEnabled ? "Rotation lock ON" : "Rotation lock OFF";
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+            return true;
         });
 
         // Mirror button - toggle horizontal flip
@@ -298,6 +367,44 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
         // Initialize button states from loaded settings
         updateButtonStates();
+    }
+
+    private void setupOrientationListener() {
+        orientationListener = new OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
+            @Override
+            public void onOrientationChanged(int orientation) {
+                if (!rotationLockEnabled || orientation == ORIENTATION_UNKNOWN) {
+                    return;
+                }
+
+                // Convert continuous orientation to discrete rotation (0, 90, 180, 270)
+                int deviceRotation;
+                if (orientation >= 315 || orientation < 45) {
+                    deviceRotation = 0;    // Portrait
+                } else if (orientation >= 45 && orientation < 135) {
+                    deviceRotation = 90;   // Landscape (rotated left)
+                } else if (orientation >= 135 && orientation < 225) {
+                    deviceRotation = 180;  // Portrait upside down
+                } else {
+                    deviceRotation = 270;  // Landscape (rotated right)
+                }
+
+                // Only update if rotation changed
+                if (deviceRotation != lastDeviceRotation) {
+                    int rotationDelta = (deviceRotation - lastDeviceRotation + 360) % 360;
+                    lastDeviceRotation = deviceRotation;
+
+                    // Adjust image rotation to compensate for device rotation
+                    runOnUiThread(() -> {
+                        int currentImageRotation = thermalView.getImageRotation();
+                        int newImageRotation = (currentImageRotation + rotationDelta) % 360;
+                        thermalView.setRotation(newImageRotation);
+                        updateRotationLabel();
+                        saveSettings();
+                    });
+                }
+            }
+        };
     }
 
     private void showOverflowMenu(View anchor) {
@@ -358,6 +465,10 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         if (thermalCamera.isOpen() && !thermalCamera.isStreaming()) {
             thermalCamera.startStream(this);
         }
+        // Enable orientation listener for rotation lock
+        if (orientationListener != null && orientationListener.canDetectOrientation()) {
+            orientationListener.enable();
+        }
     }
 
     @Override
@@ -367,12 +478,25 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         if (thermalCamera.isStreaming()) {
             thermalCamera.stopStream();
         }
+        // Disable orientation listener
+        if (orientationListener != null) {
+            orientationListener.disable();
+        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // Cancel any pending camera operations
+        if (cameraHandler != null) {
+            cameraHandler.removeCallbacksAndMessages(null);
+        }
         closeCamera();
+        // Shutdown camera thread
+        if (cameraThread != null) {
+            cameraThread.quitSafely();
+            cameraThread = null;
+        }
         if (usbReceiverRegistered) {
             try {
                 unregisterReceiver(usbReceiver);
@@ -427,6 +551,15 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         if (!usbReceiverRegistered) {
             registerUsbReceiver();
         }
+
+        // Skip if we're already opening or have opened this device
+        if (currentDevice != null &&
+                currentDevice.getDeviceName().equals(device.getDeviceName()) &&
+                (thermalCamera.isOpen() || isOpeningCamera)) {
+            Log.d(TAG, "Camera already open/opening, skipping permission request");
+            return;
+        }
+
         if (usbManager.hasPermission(device)) {
             openCamera(device);
         } else {
@@ -458,42 +591,138 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     }
 
     private void openCamera(UsbDevice device) {
-        // Always close any existing camera, even if isOpen() is false
-        // This ensures native resources are released before opening a new device
+        // Check if we're already opening this device
+        if (isOpeningCamera) {
+            Log.d(TAG, "Already opening a camera, ignoring duplicate request");
+            return;
+        }
+
+        // Close existing camera first (on main thread for UI updates)
         if (thermalCamera.isOpen()) {
             Log.i(TAG, "Closing existing camera before opening new one");
             updateStatus("Reconnecting...");
         }
-        closeCamera();
+        closeCameraInternal();  // Don't reset isOpeningCamera
 
-        updateStatus("Connecting to camera...");
+        // Set flag after close to avoid race
+        isOpeningCamera = true;
+
+        // Run camera open on background thread to avoid blocking UI
+        cameraHandler.post(() -> openCameraWithRetry(device, 0));
+    }
+
+    private static final int MAX_OPEN_RETRIES = 2;
+    private static final int OPEN_RETRY_DELAY_MS = 300;
+    private static final int INITIAL_OPEN_DELAY_MS = 100;  // Wait for USB stack to settle
+
+    private void openCameraWithRetry(UsbDevice device, int attempt) {
+        // Add initial delay on first attempt to let USB stack settle after close
+        if (attempt == 0) {
+            try {
+                Thread.sleep(INITIAL_OPEN_DELAY_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                mainHandler.post(() -> {
+                    isOpeningCamera = false;
+                    updateStatus("Camera open interrupted");
+                });
+                return;
+            }
+        }
+
+        // Verify device is still connected
+        if (!usbManager.getDeviceList().containsKey(device.getDeviceName())) {
+            Log.w(TAG, "Device disconnected before open attempt");
+            mainHandler.post(() -> {
+                isOpeningCamera = false;
+                updateStatus("Camera disconnected");
+            });
+            return;
+        }
+
+        final int currentAttempt = attempt;
+        mainHandler.post(() -> {
+            if (currentAttempt > 0) {
+                updateStatus("Retrying... (" + currentAttempt + "/" + MAX_OPEN_RETRIES + ")");
+            } else {
+                updateStatus("Connecting to camera...");
+            }
+        });
+        Log.i(TAG, "Open attempt " + (attempt + 1) + "/" + (MAX_OPEN_RETRIES + 1));
 
         UsbDeviceConnection connection = usbManager.openDevice(device);
         if (connection == null) {
             Log.e(TAG, "Failed to open USB device connection");
-            updateStatus("Failed to open USB device");
+            if (attempt < MAX_OPEN_RETRIES) {
+                scheduleRetryOnBackground(device, attempt + 1);
+            } else {
+                mainHandler.post(() -> {
+                    isOpeningCamera = false;
+                    updateStatus("Failed to open USB device - tap to retry");
+                    pendingDevice = device;
+                });
+            }
             return;
         }
 
         currentDevice = device;
-        updateStatus("Initializing camera...");
+        mainHandler.post(() -> updateStatus("Initializing camera..."));
 
         if (thermalCamera.open(device, connection)) {
-            updateStatus("Starting stream...");
+            mainHandler.post(() -> updateStatus("Starting stream..."));
             if (thermalCamera.startStream(this)) {
-                statusText.setVisibility(View.GONE);
+                mainHandler.post(() -> {
+                    statusText.setVisibility(View.GONE);
+                    pendingDevice = null;
+                    isOpeningCamera = false;
+                });
                 Log.i(TAG, "Camera streaming started");
             } else {
-                updateStatus("Failed to start stream");
+                mainHandler.post(() -> {
+                    isOpeningCamera = false;
+                    updateStatus("Failed to start stream - tap to retry");
+                    pendingDevice = device;
+                });
             }
         } else {
-            updateStatus("Failed to open camera");
+            Log.e(TAG, "Failed to open camera (attempt " + (attempt + 1) + ")");
             connection.close();
             currentDevice = null;
+
+            if (attempt < MAX_OPEN_RETRIES) {
+                scheduleRetryOnBackground(device, attempt + 1);
+            } else {
+                mainHandler.post(() -> {
+                    isOpeningCamera = false;
+                    updateStatus("Failed to open camera - tap to retry");
+                    pendingDevice = device;
+                });
+            }
         }
     }
 
+    private void scheduleRetryOnBackground(UsbDevice device, int attempt) {
+        // Use cameraHandler to schedule retry with delay on background thread
+        cameraHandler.postDelayed(() -> {
+            // Verify device is still connected before retrying
+            if (usbManager.getDeviceList().containsKey(device.getDeviceName())) {
+                openCameraWithRetry(device, attempt);
+            } else {
+                Log.w(TAG, "Device disconnected, cancelling retry");
+                mainHandler.post(() -> {
+                    isOpeningCamera = false;
+                    updateStatus("Camera disconnected");
+                });
+            }
+        }, OPEN_RETRY_DELAY_MS);
+    }
+
     private void closeCamera() {
+        closeCameraInternal();
+        isOpeningCamera = false;
+    }
+
+    private void closeCameraInternal() {
         thermalCamera.close();
         currentDevice = null;
         statusText.setVisibility(View.VISIBLE);
@@ -603,10 +832,15 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         colormapPreview.setBackground(gradient);
     }
 
+    private void updateRotationLockIcon() {
+        iconRotationLock.setVisibility(rotationLockEnabled ? View.VISIBLE : View.GONE);
+    }
+
     private void updateButtonStates() {
         updateRotationLabel();
         updateMirrorButton();
         updateColormapPreview();
+        updateRotationLockIcon();
     }
 
     private void saveSettings() {
@@ -617,6 +851,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         editor.putInt(PREF_ROTATION, thermalView.getImageRotation());
         editor.putBoolean(PREF_MIRRORED, thermalView.isMirrored());
         editor.putInt(PREF_ROUNDING, currentRoundingMode);
+        editor.putBoolean(PREF_ROTATION_LOCK, rotationLockEnabled);
         editor.apply();
     }
 
@@ -628,6 +863,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         thermalView.setMirrored(prefs.getBoolean(PREF_MIRRORED, false));
         currentRoundingMode = prefs.getInt(PREF_ROUNDING, ThermalCamera.ROUNDING_NONE);
         thermalCamera.setRoundingMode(currentRoundingMode);
+        rotationLockEnabled = prefs.getBoolean(PREF_ROTATION_LOCK, true);
     }
 
     /** Returns the libuvc version string (implemented in native-lib.cpp). */

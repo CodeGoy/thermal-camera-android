@@ -305,8 +305,9 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeOpen(
     // Wrap the Android USB file descriptor directly with libuvc
     // uvc_wrap takes: file descriptor, context, output device handle
     // Retry with delay if device is busy (common when reconnecting quickly)
+    // Note: If a kernel driver (V4L2) has claimed the device, retries won't help
     const int maxRetries = 3;
-    const int retryDelayMs = 100;
+    const int retryDelayMs = 150;
 
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
         res = uvc_wrap(fd, g_ctx, &g_devh);
