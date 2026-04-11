@@ -275,39 +275,50 @@ public class ThermalView extends View {
         canvas.drawLine(crossCenterX, crossCenterY - crossSize,
                 crossCenterX, crossCenterY + crossSize, crosshairPaint);
 
-        // Bounds for label positioning
-        float imgLeft = destRect.left;
-        float imgTop = destRect.top;
-        float imgRight = destRect.right;
-        float imgBottom = destRect.bottom;
-
         // Draw max temperature marker (red circle)
         float maxViewX = destRect.left + thermalData.maxCol * scaleX;
         float maxViewY = destRect.top + thermalData.maxRow * scaleY;
         markerPaint.setColor(Color.RED);
         canvas.drawCircle(maxViewX, maxViewY, 12f, markerPaint);
-        String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
-        drawMarkerLabel(canvas, maxLabel, maxViewX, maxViewY, imgLeft, imgTop, imgRight, imgBottom);
 
         // Draw min temperature marker (blue circle)
         float minViewX = destRect.left + thermalData.minCol * scaleX;
         float minViewY = destRect.top + thermalData.minRow * scaleY;
         markerPaint.setColor(Color.BLUE);
         canvas.drawCircle(minViewX, minViewY, 12f, markerPaint);
-        String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
-        drawMarkerLabel(canvas, minLabel, minViewX, minViewY, imgLeft, imgTop, imgRight, imgBottom);
 
-        // Draw tap temperature if recent
-        if (!Float.isNaN(tapTemp) && System.currentTimeMillis() - tapTime < 3000) {
-            float tapViewX = destRect.left + tapX * scaleX;
-            float tapViewY = destRect.top + tapY * scaleY;
+        // Draw tap temperature marker if recent
+        float tapViewX = 0, tapViewY = 0;
+        boolean showTap = !Float.isNaN(tapTemp) && System.currentTimeMillis() - tapTime < 3000;
+        if (showTap) {
+            tapViewX = destRect.left + tapX * scaleX;
+            tapViewY = destRect.top + tapY * scaleY;
             markerPaint.setColor(Color.GREEN);
             canvas.drawCircle(tapViewX, tapViewY, 10f, markerPaint);
-            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
-            drawMarkerLabel(canvas, tapLabel, tapViewX, tapViewY, imgLeft, imgTop, imgRight, imgBottom);
         }
 
+        // Get current transformation matrix to convert marker positions to screen coordinates
+        android.graphics.Matrix matrix = canvas.getMatrix();
+
         canvas.restore();
+
+        // Transform marker positions to screen coordinates and draw labels
+        float[] pts = new float[6];
+        pts[0] = maxViewX; pts[1] = maxViewY;
+        pts[2] = minViewX; pts[3] = minViewY;
+        pts[4] = tapViewX; pts[5] = tapViewY;
+        matrix.mapPoints(pts);
+
+        String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
+        drawMarkerLabelAtScreen(canvas, maxLabel, pts[0], pts[1]);
+
+        String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+        drawMarkerLabelAtScreen(canvas, minLabel, pts[2], pts[3]);
+
+        if (showTap) {
+            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
+            drawMarkerLabelAtScreen(canvas, tapLabel, pts[4], pts[5]);
+        }
 
         // Draw HUD overlay (not affected by zoom)
         drawHud(canvas);
@@ -351,38 +362,42 @@ public class ThermalView extends View {
     }
 
     /**
-     * Draws a label near a marker, adjusting position to stay within bounds.
-     * Counter-rotates and counter-flips so text remains upright.
+     * Draws a label near a marker at screen coordinates (after canvas.restore()).
+     * Adjusts position to stay within view bounds.
      */
-    private void drawMarkerLabel(Canvas canvas, String text, float markerX, float markerY,
-                                  float left, float top, float right, float bottom) {
+    private void drawMarkerLabelAtScreen(Canvas canvas, String text, float screenX, float screenY) {
         float textWidth = textPaint.measureText(text);
         float textHeight = textPaint.getTextSize();
         float offsetX = 16f;
         float offsetY = 8f;
 
+        // View bounds with margin
+        float viewRight = getWidth() - 8f;
+        float viewBottom = getHeight() - 8f;
+        float viewLeft = 8f;
+        float viewTop = 8f;
+
         float x, y;
 
         // Position horizontally: prefer right, but go left if near right edge
-        if (markerX + offsetX + textWidth > right) {
-            x = markerX - offsetX - textWidth;
+        if (screenX + offsetX + textWidth > viewRight) {
+            x = screenX - offsetX - textWidth;
         } else {
-            x = markerX + offsetX;
+            x = screenX + offsetX;
         }
 
         // Position vertically: prefer below-center, but go above if near bottom
-        if (markerY + offsetY + textHeight > bottom) {
-            y = markerY - offsetY;
+        if (screenY + offsetY + textHeight > viewBottom) {
+            y = screenY - offsetY;
         } else {
-            y = markerY + offsetY;
+            y = screenY + offsetY;
         }
 
-        // Counter-rotate and counter-flip so text stays upright
-        canvas.save();
-        canvas.rotate(-rotationDegrees, markerX, markerY);
-        canvas.scale(-1f, 1f, markerX, markerY);  // Counter the horizontal flip
+        // Clamp to view bounds
+        x = Math.max(viewLeft, Math.min(viewRight - textWidth, x));
+        y = Math.max(viewTop + textHeight, Math.min(viewBottom, y));
+
         drawTextWithOutline(canvas, text, x, y);
-        canvas.restore();
     }
 
     private void drawHud(Canvas canvas) {
@@ -463,7 +478,12 @@ public class ThermalView extends View {
 
             float viewWidth = getWidth();
             float viewHeight = getHeight();
-            float imageAspect = (float) ThermalData.WIDTH / ThermalData.HEIGHT;
+
+            // Account for rotation in aspect ratio
+            boolean isRotated90or270 = (rotationDegrees == 90 || rotationDegrees == 270);
+            float imageAspect = isRotated90or270
+                    ? (float) ThermalData.HEIGHT / ThermalData.WIDTH
+                    : (float) ThermalData.WIDTH / ThermalData.HEIGHT;
             float viewAspect = viewWidth / viewHeight;
 
             float drawWidth, drawHeight;
@@ -477,18 +497,42 @@ public class ThermalView extends View {
 
             float left = (viewWidth - drawWidth) / 2f;
             float top = (viewHeight - drawHeight) / 2f;
+            float centerX = left + drawWidth / 2f;
+            float centerY = top + drawHeight / 2f;
 
-            // Transform tap coordinates back to image space
+            // Transform tap coordinates back to image space (undo zoom/pan)
             float tapViewX = (e.getX() - viewWidth / 2f) / scaleFactor + viewWidth / 2f - translateX;
             float tapViewY = (e.getY() - viewHeight / 2f) / scaleFactor + viewHeight / 2f - translateY;
 
-            int imgX = (int) ((tapViewX - left) / drawWidth * ThermalData.WIDTH);
-            int imgY = (int) ((tapViewY - top) / drawHeight * ThermalData.HEIGHT);
+            // Undo rotation (rotate in opposite direction around center)
+            float dx = tapViewX - centerX;
+            float dy = tapViewY - centerY;
+            double radians = Math.toRadians(-rotationDegrees);
+            float rotatedDx = (float) (dx * Math.cos(radians) - dy * Math.sin(radians));
+            float rotatedDy = (float) (dx * Math.sin(radians) + dy * Math.cos(radians));
+            tapViewX = centerX + rotatedDx;
+            tapViewY = centerY + rotatedDy;
+
+            // Undo horizontal flip
+            tapViewX = centerX - (tapViewX - centerX);
+
+            // Convert to image coordinates
+            // For rotated images, the destRect dimensions are swapped
+            float imgWidth, imgHeight;
+            if (isRotated90or270) {
+                imgWidth = drawHeight;
+                imgHeight = drawWidth;
+            } else {
+                imgWidth = drawWidth;
+                imgHeight = drawHeight;
+            }
+            float imgLeft = centerX - imgWidth / 2f;
+            float imgTop = centerY - imgHeight / 2f;
+
+            int imgX = (int) ((tapViewX - imgLeft) / imgWidth * ThermalData.WIDTH);
+            int imgY = (int) ((tapViewY - imgTop) / imgHeight * ThermalData.HEIGHT);
 
             if (imgX >= 0 && imgX < ThermalData.WIDTH && imgY >= 0 && imgY < ThermalData.HEIGHT) {
-                // For now, we show the grayscale value - actual temp would need thermal data access
-                // The thermal data is in the bottom half of the frame which we don't have direct access to here
-                // We'll approximate based on the visual intensity
                 tapX = imgX;
                 tapY = imgY;
                 tapTime = System.currentTimeMillis();
