@@ -497,3 +497,90 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeSetRoundingMode(
     g_rounding_mode = mode;
     LOGI("Rounding mode set to %d", mode);
 }
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_breyt_thermalcamera_ThermalCamera_nativeGetFormatInfo(
+        JNIEnv *env,
+        jobject /* this */) {
+
+    if (g_devh == nullptr) {
+        return env->NewStringUTF("Camera not open");
+    }
+
+    std::string info;
+
+    // Get device descriptor for camera name
+    uvc_device_t *dev = uvc_get_device(g_devh);
+    if (dev) {
+        uvc_device_descriptor_t *desc;
+        if (uvc_get_device_descriptor(dev, &desc) == UVC_SUCCESS) {
+            if (desc->product) {
+                info += "Device: ";
+                info += desc->product;
+                info += "\n";
+            }
+            if (desc->manufacturer) {
+                info += "Manufacturer: ";
+                info += desc->manufacturer;
+                info += "\n";
+            }
+            char vidpid[32];
+            snprintf(vidpid, sizeof(vidpid), "VID: %04x, PID: %04x\n", desc->idVendor, desc->idProduct);
+            info += vidpid;
+            uvc_free_device_descriptor(desc);
+        }
+    }
+
+    info += "\nSupported formats:\n";
+
+    // Iterate through format descriptors
+    const uvc_format_desc_t *format_desc = uvc_get_format_descs(g_devh);
+    while (format_desc != nullptr) {
+        // Format type
+        const char *format_name = "Unknown";
+        switch (format_desc->bDescriptorSubtype) {
+            case UVC_VS_FORMAT_UNCOMPRESSED:
+                // Check GUID for specific format
+                if (format_desc->guidFormat[0] == 'Y' && format_desc->guidFormat[1] == 'U' &&
+                    format_desc->guidFormat[2] == 'Y' && format_desc->guidFormat[3] == '2') {
+                    format_name = "YUY2 (YUYV)";
+                } else if (format_desc->guidFormat[0] == 'N' && format_desc->guidFormat[1] == 'V' &&
+                           format_desc->guidFormat[2] == '1' && format_desc->guidFormat[3] == '2') {
+                    format_name = "NV12";
+                } else {
+                    format_name = "Uncompressed";
+                }
+                break;
+            case UVC_VS_FORMAT_MJPEG:
+                format_name = "MJPEG";
+                break;
+            case UVC_VS_FORMAT_FRAME_BASED:
+                format_name = "Frame-based";
+                break;
+            default:
+                break;
+        }
+
+        info += "  ";
+        info += format_name;
+        info += ":\n";
+
+        // Iterate through frame descriptors for this format
+        const uvc_frame_desc_t *frame_desc = format_desc->frame_descs;
+        while (frame_desc != nullptr) {
+            char resolution[64];
+            // Calculate fps from interval (100ns units)
+            float fps = frame_desc->dwDefaultFrameInterval > 0
+                        ? 10000000.0f / frame_desc->dwDefaultFrameInterval
+                        : 0;
+            snprintf(resolution, sizeof(resolution), "    %dx%d @ %.0f fps\n",
+                     frame_desc->wWidth, frame_desc->wHeight, fps);
+            info += resolution;
+            frame_desc = frame_desc->next;
+        }
+
+        format_desc = format_desc->next;
+    }
+
+    return env->NewStringUTF(info.c_str());
+}

@@ -151,6 +151,18 @@ public class ThermalCamera {
     public native int getFrameWidth();
     public native int getImageHeight();
     private native void nativeSetRoundingMode(int mode);
+    private native String nativeGetFormatInfo();
+
+    /**
+     * Gets camera format information including supported resolutions.
+     * @return String with format info, or null if camera not open
+     */
+    public String getFormatInfo() {
+        if (!isOpen) {
+            return null;
+        }
+        return nativeGetFormatInfo();
+    }
 
     /**
      * Sets the temperature rounding mode for display.

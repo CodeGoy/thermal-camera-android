@@ -2,6 +2,7 @@ package com.breyt.thermalcamera;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
@@ -417,6 +418,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 thermalCamera.setRoundingMode(currentRoundingMode);
                 saveSettings();
                 keepOpen = true;
+            } else if (id == R.id.menu_camera_info) {
+                showCameraInfoDialog();
             }
 
             if (keepOpen) {
@@ -823,6 +826,19 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             statusText.setText(status);
             statusText.setVisibility(View.VISIBLE);
         });
+    }
+
+    private void showCameraInfoDialog() {
+        String info = thermalCamera.getFormatInfo();
+        if (info == null) {
+            info = "Camera not connected";
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Camera Info")
+                .setMessage(info)
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void takeScreenshot() {
