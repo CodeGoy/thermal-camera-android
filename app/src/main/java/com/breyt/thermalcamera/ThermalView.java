@@ -47,6 +47,11 @@ public class ThermalView extends View {
     // Mirror mode (horizontal flip for selfie mode)
     private boolean mirrored = false;
 
+    // Temperature scale display
+    private boolean showScale = false;
+    private Bitmap scaleBitmap;
+    private int[] scalePixels;
+
     // Gesture detectors
     private ScaleGestureDetector scaleDetector;
     private GestureDetector gestureDetector;
@@ -261,6 +266,21 @@ public class ThermalView extends View {
         return mirrored;
     }
 
+    /**
+     * Sets whether the temperature scale is shown.
+     */
+    public void setShowScale(boolean show) {
+        showScale = show;
+        invalidate();
+    }
+
+    /**
+     * Returns whether the temperature scale is shown.
+     */
+    public boolean isShowingScale() {
+        return showScale;
+    }
+
     private void updateFps() {
         frameCount++;
         long now = System.currentTimeMillis();
@@ -398,6 +418,11 @@ public class ThermalView extends View {
 
         // Draw HUD overlay (not affected by zoom)
         drawHud(canvas);
+
+        // Draw temperature scale if enabled
+        if (showScale) {
+            drawTemperatureScale(canvas);
+        }
     }
 
     private void applyColormap() {
@@ -511,6 +536,71 @@ public class ThermalView extends View {
         String status = String.format(Locale.US, "%s | %.1fx | %.0f fps",
                 getColormapName(), scaleFactor, fps);
         canvas.drawText(status, textX, textY, hudTextPaint);
+    }
+
+    private void drawTemperatureScale(Canvas canvas) {
+        if (thermalData == null) return;
+
+        float padding = 16f;
+        float scaleWidth = 30f;
+        float scaleHeight = getHeight() * 0.6f;
+        float scaleRight = getWidth() - padding;
+        float scaleLeft = scaleRight - scaleWidth;
+        float scaleTop = (getHeight() - scaleHeight) / 2f;
+        float scaleBottom = scaleTop + scaleHeight;
+
+        // Create/update scale gradient bitmap
+        int bitmapHeight = (int) scaleHeight;
+        if (scaleBitmap == null || scaleBitmap.getHeight() != bitmapHeight) {
+            scaleBitmap = Bitmap.createBitmap(1, bitmapHeight, Bitmap.Config.ARGB_8888);
+            scalePixels = new int[bitmapHeight];
+        }
+
+        // Fill with colormap gradient (top = hot, bottom = cold)
+        for (int i = 0; i < bitmapHeight; i++) {
+            float normalized = 1f - (float) i / (bitmapHeight - 1);
+            scalePixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+        }
+        scaleBitmap.setPixels(scalePixels, 0, 1, 0, 0, 1, bitmapHeight);
+
+        // Draw scale background
+        canvas.drawRoundRect(scaleLeft - 4, scaleTop - 4, scaleRight + 4, scaleBottom + 4,
+                6f, 6f, hudBackgroundPaint);
+
+        // Draw scale gradient
+        RectF scaleRect = new RectF(scaleLeft, scaleTop, scaleRight, scaleBottom);
+        canvas.drawBitmap(scaleBitmap, null, scaleRect, bitmapPaint);
+
+        // Draw temperature labels
+        float textOffset = scaleWidth + 8f;
+        hudTextPaint.setTextSize(24f);
+
+        // Max temperature (top)
+        String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
+        canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 8f,
+                scaleTop + 8f, hudTextPaint);
+
+        // Min temperature (bottom)
+        String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+        canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 8f,
+                scaleBottom, hudTextPaint);
+
+        // Average temperature (middle, with marker)
+        float avgNormalized = (thermalData.avgTemp - thermalData.minTemp) /
+                (thermalData.maxTemp - thermalData.minTemp);
+        avgNormalized = Math.max(0f, Math.min(1f, avgNormalized));
+        float avgY = scaleBottom - avgNormalized * scaleHeight;
+
+        // Draw avg marker line
+        crosshairPaint.setStrokeWidth(2f);
+        canvas.drawLine(scaleLeft - 6f, avgY, scaleRight + 6f, avgY, crosshairPaint);
+
+        String avgLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.avgTemp);
+        float avgLabelX = scaleLeft - hudTextPaint.measureText(avgLabel) - 12f;
+        canvas.drawText(avgLabel, avgLabelX, avgY + 6f, hudTextPaint);
+
+        // Reset text size
+        hudTextPaint.setTextSize(32f);
     }
 
     @Override

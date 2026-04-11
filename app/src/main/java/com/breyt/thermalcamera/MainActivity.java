@@ -64,6 +64,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private static final String PREF_MIRRORED = "mirrored";
     private static final String PREF_ROUNDING = "rounding";
     private static final String PREF_ROTATION_LOCK = "rotationLock";
+    private static final String PREF_SHOW_SCALE = "showScale";
 
     private UsbManager usbManager;
     private TextView statusText;
@@ -391,6 +392,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         popup.getMenu().findItem(R.id.menu_rounding_0_5).setChecked(
                 currentRoundingMode == ThermalCamera.ROUNDING_0_5);
 
+        // Update scale checkbox
+        popup.getMenu().findItem(R.id.menu_show_scale).setChecked(thermalView.isShowingScale());
+
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
             boolean keepOpen = false;
@@ -416,6 +420,10 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             } else if (id == R.id.menu_rounding_0_5) {
                 currentRoundingMode = ThermalCamera.ROUNDING_0_5;
                 thermalCamera.setRoundingMode(currentRoundingMode);
+                saveSettings();
+                keepOpen = true;
+            } else if (id == R.id.menu_show_scale) {
+                thermalView.setShowScale(!thermalView.isShowingScale());
                 saveSettings();
                 keepOpen = true;
             } else if (id == R.id.menu_camera_info) {
@@ -952,6 +960,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         editor.putBoolean(PREF_MIRRORED, thermalView.isMirrored());
         editor.putInt(PREF_ROUNDING, currentRoundingMode);
         editor.putBoolean(PREF_ROTATION_LOCK, rotationLockEnabled);
+        editor.putBoolean(PREF_SHOW_SCALE, thermalView.isShowingScale());
         editor.apply();
     }
 
@@ -964,6 +973,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         currentRoundingMode = prefs.getInt(PREF_ROUNDING, ThermalCamera.ROUNDING_NONE);
         thermalCamera.setRoundingMode(currentRoundingMode);
         rotationLockEnabled = prefs.getBoolean(PREF_ROTATION_LOCK, true);
+        thermalView.setShowScale(prefs.getBoolean(PREF_SHOW_SCALE, false));
     }
 
     /** Returns the libuvc version string (implemented in native-lib.cpp). */
