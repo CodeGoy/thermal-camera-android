@@ -20,7 +20,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
-import android.hardware.SensorManager;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
@@ -33,7 +32,6 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
-import android.view.OrientationEventListener;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -80,8 +78,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
     // Rotation lock - when enabled, image rotates with device orientation
     private boolean rotationLockEnabled = true;
-    private OrientationEventListener orientationListener;
-    private int lastDeviceRotation = -1;  // Tracks device orientation (0, 90, 180, 270), -1 = not initialized
+    private int lastSystemRotation = -1;  // Tracks system display rotation (0, 90, 180, 270)
 
     private ThermalCamera thermalCamera;
     private UsbDevice currentDevice;
@@ -252,8 +249,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         // Setup button handlers
         setupButtons();
 
-        // Setup orientation listener for rotation lock feature
-        setupOrientationListener();
+        // Initialize rotation tracking for rotation lock feature
+        lastSystemRotation = getSystemRotationDegrees();
 
         // Set initial layout based on current orientation
         updateLayoutForOrientation(getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE);
@@ -381,50 +378,6 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         updateButtonStates();
     }
 
-    private void setupOrientationListener() {
-        orientationListener = new OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
-            @Override
-            public void onOrientationChanged(int orientation) {
-                if (!rotationLockEnabled || orientation == ORIENTATION_UNKNOWN) {
-                    return;
-                }
-
-                // Convert continuous orientation to discrete rotation (0, 90, 180, 270)
-                int deviceRotation;
-                if (orientation >= 315 || orientation < 45) {
-                    deviceRotation = 0;    // Portrait
-                } else if (orientation >= 45 && orientation < 135) {
-                    deviceRotation = 90;   // Landscape (rotated left)
-                } else if (orientation >= 135 && orientation < 225) {
-                    deviceRotation = 180;  // Portrait upside down
-                } else {
-                    deviceRotation = 270;  // Landscape (rotated right)
-                }
-
-                // Only update if rotation changed
-                if (deviceRotation != lastDeviceRotation) {
-                    // On first reading, just record the orientation without applying rotation
-                    if (lastDeviceRotation == -1) {
-                        lastDeviceRotation = deviceRotation;
-                        return;
-                    }
-
-                    int rotationDelta = (deviceRotation - lastDeviceRotation + 360) % 360;
-                    lastDeviceRotation = deviceRotation;
-
-                    // Counter-rotate image to keep it stable from user's perspective
-                    runOnUiThread(() -> {
-                        int currentImageRotation = thermalView.getImageRotation();
-                        int newImageRotation = (currentImageRotation - rotationDelta + 360) % 360;
-                        thermalView.setRotation(newImageRotation);
-                        updateRotationLabel();
-                        saveSettings();
-                    });
-                }
-            }
-        };
-    }
-
     private void showOverflowMenu(View anchor) {
         PopupMenu popup = new PopupMenu(this, anchor);
         popup.getMenuInflater().inflate(R.menu.overflow_menu, popup.getMenu());
@@ -483,8 +436,45 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         updateSystemBarsVisibility();
         // Rearrange control bar for new orientation
         updateLayoutForOrientation(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE);
+        // Sync image rotation with system orientation change
+        syncRotationWithSystem();
         // Update colormap preview gradient direction
         updateColormapPreview();
+    }
+
+    private int getSystemRotationDegrees() {
+        int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
+        switch (displayRotation) {
+            case android.view.Surface.ROTATION_90:  return 90;
+            case android.view.Surface.ROTATION_180: return 180;
+            case android.view.Surface.ROTATION_270: return 270;
+            default: return 0;
+        }
+    }
+
+    private void syncRotationWithSystem() {
+        if (!rotationLockEnabled) {
+            return;
+        }
+
+        int currentSystemRotation = getSystemRotationDegrees();
+
+        // If there's a mismatch, sync the rotation
+        if (currentSystemRotation != lastSystemRotation) {
+            int rotationDelta = (currentSystemRotation - lastSystemRotation + 360) % 360;
+            lastSystemRotation = currentSystemRotation;
+
+            int currentImageRotation = thermalView.getImageRotation();
+            int newImageRotation;
+            if (thermalView.isMirrored()) {
+                newImageRotation = (currentImageRotation - rotationDelta + 360) % 360;
+            } else {
+                newImageRotation = (currentImageRotation + rotationDelta) % 360;
+            }
+            thermalView.setRotation(newImageRotation);
+            updateRotationLabel();
+            saveSettings();
+        }
     }
 
     private void updateLayoutForOrientation(boolean isLandscape) {
@@ -567,10 +557,6 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         if (thermalCamera.isOpen() && !thermalCamera.isStreaming()) {
             thermalCamera.startStream(this);
         }
-        // Enable orientation listener for rotation lock
-        if (orientationListener != null && orientationListener.canDetectOrientation()) {
-            orientationListener.enable();
-        }
     }
 
     @Override
@@ -579,10 +565,6 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         // Stop streaming but keep camera open
         if (thermalCamera.isStreaming()) {
             thermalCamera.stopStream();
-        }
-        // Disable orientation listener
-        if (orientationListener != null) {
-            orientationListener.disable();
         }
     }
 
