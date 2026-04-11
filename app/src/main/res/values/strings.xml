@@ -9,4 +9,18 @@
     <string name="rounding_0_5">0.5</string>
     <string name="capture">Snap</string>
     <string name="rotate">0\u00B0</string>
+
+    <!-- Content descriptions for accessibility -->
+    <string name="desc_colormap">Cycle colormap</string>
+    <string name="desc_rotate">Rotate 90 degrees</string>
+    <string name="desc_mirror">Toggle mirror</string>
+    <string name="desc_screenshot">Take screenshot</string>
+    <string name="desc_more">More options</string>
+
+    <!-- Overflow menu items -->
+    <string name="menu_contrast_down">Contrast -</string>
+    <string name="menu_contrast_up">Contrast +</string>
+    <string name="menu_rounding_none">Rounding: None</string>
+    <string name="menu_rounding_0_2">Rounding: 0.2\u00B0C</string>
+    <string name="menu_rounding_0_5">Rounding: 0.5\u00B0C</string>
 </resources>

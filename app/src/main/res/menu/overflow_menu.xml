@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_contrast_down"
+        android:title="@string/menu_contrast_down" />
+    <item
+        android:id="@+id/menu_contrast_up"
+        android:title="@string/menu_contrast_up" />
+    <item
+        android:id="@+id/menu_rounding_none"
+        android:title="@string/menu_rounding_none"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_rounding_0_2"
+        android:title="@string/menu_rounding_0_2"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_rounding_0_5"
+        android:title="@string/menu_rounding_0_5"
+        android:checkable="true" />
+</menu>

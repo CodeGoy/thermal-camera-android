@@ -13,6 +13,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
@@ -25,7 +26,8 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -40,11 +42,16 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
     private static final String TAG = "ThermalCamera";
     private static final String ACTION_USB_PERMISSION = "com.breyt.thermalcamera.USB_PERMISSION";
+    private static final String PREFS_NAME = "ThermalCameraPrefs";
+    private static final String PREF_CONTRAST = "contrast";
+    private static final String PREF_COLORMAP = "colormap";
+    private static final String PREF_ROTATION = "rotation";
+    private static final String PREF_MIRRORED = "mirrored";
+    private static final String PREF_ROUNDING = "rounding";
 
     private UsbManager usbManager;
     private TextView statusText;
     private ThermalView thermalView;
-    private Button btnColormap;
 
     private ThermalCamera thermalCamera;
     private UsbDevice currentDevice;
@@ -171,10 +178,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
         statusText = findViewById(R.id.status_text);
         thermalView = findViewById(R.id.thermal_view);
-        btnColormap = findViewById(R.id.btn_colormap);
 
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         thermalCamera = new ThermalCamera();
+
+        // Load saved settings
+        loadSettings();
 
         // Setup button handlers
         setupButtons();
@@ -231,46 +240,83 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     }
 
     private void setupButtons() {
-        btnColormap.setOnClickListener(v -> {
+        // Colormap button - cycle through colormaps
+        findViewById(R.id.btn_colormap).setOnClickListener(v -> {
             thermalView.nextColormap();
-            btnColormap.setText(thermalView.getColormapName());
+            saveSettings();
         });
 
-        findViewById(R.id.btn_contrast_down).setOnClickListener(v -> {
-            thermalView.adjustContrast(-0.2f);
+        // Rotate button - rotate 90 degrees
+        findViewById(R.id.btn_rotate).setOnClickListener(v -> {
+            thermalView.rotate();
+            saveSettings();
         });
 
-        findViewById(R.id.btn_contrast_up).setOnClickListener(v -> {
-            thermalView.adjustContrast(0.2f);
+        // Mirror button - toggle horizontal flip
+        findViewById(R.id.btn_mirror).setOnClickListener(v -> {
+            thermalView.toggleMirror();
+            saveSettings();
         });
 
-        Button btnRounding = findViewById(R.id.btn_rounding);
-        btnRounding.setOnClickListener(v -> {
-            // Cycle through: None -> 0.2 -> 0.5 -> None
-            currentRoundingMode = (currentRoundingMode + 1) % 3;
-            thermalCamera.setRoundingMode(currentRoundingMode);
-            switch (currentRoundingMode) {
-                case ThermalCamera.ROUNDING_0_2:
-                    btnRounding.setText(R.string.rounding_0_2);
-                    break;
-                case ThermalCamera.ROUNDING_0_5:
-                    btnRounding.setText(R.string.rounding_0_5);
-                    break;
-                default:
-                    btnRounding.setText(R.string.rounding_none);
-                    break;
-            }
-        });
-
-        Button btnRotate = findViewById(R.id.btn_rotate);
-        btnRotate.setOnClickListener(v -> {
-            int newRotation = thermalView.rotate();
-            btnRotate.setText(String.format(Locale.US, "%d\u00B0", newRotation));
-        });
-
+        // Screenshot button
         findViewById(R.id.btn_screenshot).setOnClickListener(v -> {
             takeScreenshot();
         });
+
+        // Overflow menu button
+        ImageButton btnOverflow = findViewById(R.id.btn_overflow);
+        btnOverflow.setOnClickListener(v -> showOverflowMenu(btnOverflow));
+    }
+
+    private void showOverflowMenu(View anchor) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenuInflater().inflate(R.menu.overflow_menu, popup.getMenu());
+
+        // Update rounding checkmarks
+        popup.getMenu().findItem(R.id.menu_rounding_none).setChecked(
+                currentRoundingMode == ThermalCamera.ROUNDING_NONE);
+        popup.getMenu().findItem(R.id.menu_rounding_0_2).setChecked(
+                currentRoundingMode == ThermalCamera.ROUNDING_0_2);
+        popup.getMenu().findItem(R.id.menu_rounding_0_5).setChecked(
+                currentRoundingMode == ThermalCamera.ROUNDING_0_5);
+
+        popup.setOnMenuItemClickListener(item -> {
+            int id = item.getItemId();
+            boolean keepOpen = false;
+
+            if (id == R.id.menu_contrast_down) {
+                thermalView.adjustContrast(-0.2f);
+                saveSettings();
+                keepOpen = true;
+            } else if (id == R.id.menu_contrast_up) {
+                thermalView.adjustContrast(0.2f);
+                saveSettings();
+                keepOpen = true;
+            } else if (id == R.id.menu_rounding_none) {
+                currentRoundingMode = ThermalCamera.ROUNDING_NONE;
+                thermalCamera.setRoundingMode(currentRoundingMode);
+                saveSettings();
+                keepOpen = true;
+            } else if (id == R.id.menu_rounding_0_2) {
+                currentRoundingMode = ThermalCamera.ROUNDING_0_2;
+                thermalCamera.setRoundingMode(currentRoundingMode);
+                saveSettings();
+                keepOpen = true;
+            } else if (id == R.id.menu_rounding_0_5) {
+                currentRoundingMode = ThermalCamera.ROUNDING_0_5;
+                thermalCamera.setRoundingMode(currentRoundingMode);
+                saveSettings();
+                keepOpen = true;
+            }
+
+            if (keepOpen) {
+                // Re-show the menu to keep it open
+                anchor.post(() -> showOverflowMenu(anchor));
+            }
+            return true;
+        });
+
+        popup.show();
     }
 
     @Override
@@ -474,6 +520,27 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             Log.e(TAG, "Failed to save screenshot", e);
             Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void saveSettings() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putFloat(PREF_CONTRAST, thermalView.getContrast());
+        editor.putInt(PREF_COLORMAP, thermalView.getColormapIndex());
+        editor.putInt(PREF_ROTATION, thermalView.getImageRotation());
+        editor.putBoolean(PREF_MIRRORED, thermalView.isMirrored());
+        editor.putInt(PREF_ROUNDING, currentRoundingMode);
+        editor.apply();
+    }
+
+    private void loadSettings() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        thermalView.setContrast(prefs.getFloat(PREF_CONTRAST, 1.0f));
+        thermalView.setColormapIndex(prefs.getInt(PREF_COLORMAP, 0));
+        thermalView.setRotation(prefs.getInt(PREF_ROTATION, 0));
+        thermalView.setMirrored(prefs.getBoolean(PREF_MIRRORED, false));
+        currentRoundingMode = prefs.getInt(PREF_ROUNDING, ThermalCamera.ROUNDING_NONE);
+        thermalCamera.setRoundingMode(currentRoundingMode);
     }
 
     /** Returns the libuvc version string (implemented in native-lib.cpp). */

@@ -44,6 +44,9 @@ public class ThermalView extends View {
     // Rotation (0, 90, 180, 270 degrees)
     private int rotationDegrees = 0;
 
+    // Mirror mode (horizontal flip for selfie mode)
+    private boolean mirrored = false;
+
     // Gesture detectors
     private ScaleGestureDetector scaleDetector;
     private GestureDetector gestureDetector;
@@ -156,6 +159,55 @@ public class ThermalView extends View {
     }
 
     /**
+     * Gets the current contrast value.
+     */
+    public float getContrast() {
+        return contrast;
+    }
+
+    /**
+     * Sets the contrast value directly.
+     */
+    public void setContrast(float value) {
+        contrast = Math.max(0.5f, Math.min(3.0f, value));
+        invalidate();
+    }
+
+    /**
+     * Gets the current colormap index.
+     */
+    public int getColormapIndex() {
+        return colormapIndex;
+    }
+
+    /**
+     * Sets the colormap by index.
+     */
+    public void setColormapIndex(int index) {
+        if (index >= 0 && index < Colormaps.ALL.length) {
+            colormapIndex = index;
+            currentColormap = Colormaps.ALL[colormapIndex];
+            invalidate();
+        }
+    }
+
+    /**
+     * Sets the rotation directly.
+     */
+    public void setRotation(int degrees) {
+        rotationDegrees = degrees % 360;
+        invalidate();
+    }
+
+    /**
+     * Sets the mirror mode directly.
+     */
+    public void setMirrored(boolean mirror) {
+        mirrored = mirror;
+        invalidate();
+    }
+
+    /**
      * Resets zoom to default.
      */
     public void resetZoom() {
@@ -181,6 +233,20 @@ public class ThermalView extends View {
 
     public int getImageRotation() {
         return rotationDegrees;
+    }
+
+    /**
+     * Toggles mirrored (selfie) mode.
+     * @return The new mirror state
+     */
+    public boolean toggleMirror() {
+        mirrored = !mirrored;
+        invalidate();
+        return mirrored;
+    }
+
+    public boolean isMirrored() {
+        return mirrored;
     }
 
     private void updateFps() {
@@ -238,7 +304,9 @@ public class ThermalView extends View {
         // Apply rotation and horizontal flip around center of the image area
         float centerX = left + drawWidth / 2f;
         float centerY = top + drawHeight / 2f;
-        canvas.scale(-1f, 1f, centerX, centerY);  // Flip horizontally to correct mirror
+        if (!mirrored) {
+            canvas.scale(-1f, 1f, centerX, centerY);  // Flip horizontally to correct camera mirror
+        }
         canvas.rotate(rotationDegrees, centerX, centerY);
 
         // Adjust draw rect for rotation (swap dimensions for 90/270)
@@ -509,8 +577,10 @@ public class ThermalView extends View {
             tapViewX = centerX + rotatedDx;
             tapViewY = centerY + rotatedDy;
 
-            // Undo horizontal flip
-            tapViewX = centerX - (tapViewX - centerX);
+            // Undo horizontal flip (only if not in mirror/selfie mode)
+            if (!mirrored) {
+                tapViewX = centerX - (tapViewX - centerX);
+            }
 
             // Convert to image coordinates
             // For rotated images, the destRect dimensions are swapped
