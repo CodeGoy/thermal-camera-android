@@ -11,6 +11,8 @@ import android.content.pm.PackageManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
@@ -52,6 +54,11 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private UsbManager usbManager;
     private TextView statusText;
     private ThermalView thermalView;
+
+    // Button state indicator views
+    private TextView txtRotation;
+    private View colormapPreview;
+    private ImageButton btnMirror;
 
     private ThermalCamera thermalCamera;
     private UsbDevice currentDevice;
@@ -240,21 +247,29 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     }
 
     private void setupButtons() {
+        // Initialize button state indicator views
+        txtRotation = findViewById(R.id.txt_rotation);
+        colormapPreview = findViewById(R.id.colormap_preview);
+        btnMirror = findViewById(R.id.btn_mirror);
+
         // Colormap button - cycle through colormaps
         findViewById(R.id.btn_colormap).setOnClickListener(v -> {
             thermalView.nextColormap();
+            updateColormapPreview();
             saveSettings();
         });
 
         // Rotate button - rotate 90 degrees
         findViewById(R.id.btn_rotate).setOnClickListener(v -> {
             thermalView.rotate();
+            updateRotationLabel();
             saveSettings();
         });
 
         // Mirror button - toggle horizontal flip
-        findViewById(R.id.btn_mirror).setOnClickListener(v -> {
+        btnMirror.setOnClickListener(v -> {
             thermalView.toggleMirror();
+            updateMirrorButton();
             saveSettings();
         });
 
@@ -266,6 +281,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         // Overflow menu button
         ImageButton btnOverflow = findViewById(R.id.btn_overflow);
         btnOverflow.setOnClickListener(v -> showOverflowMenu(btnOverflow));
+
+        // Initialize button states from loaded settings
+        updateButtonStates();
     }
 
     private void showOverflowMenu(View anchor) {
@@ -520,6 +538,31 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             Log.e(TAG, "Failed to save screenshot", e);
             Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void updateRotationLabel() {
+        txtRotation.setText(thermalView.getImageRotation() + "°");
+    }
+
+    private void updateMirrorButton() {
+        int tint = thermalView.isMirrored()
+                ? ContextCompat.getColor(this, R.color.mirror_active)
+                : Color.WHITE;
+        btnMirror.setColorFilter(tint);
+    }
+
+    private void updateColormapPreview() {
+        int[] colors = thermalView.getColormapColors();
+        GradientDrawable gradient = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT, colors);
+        gradient.setCornerRadius(4f);
+        colormapPreview.setBackground(gradient);
+    }
+
+    private void updateButtonStates() {
+        updateRotationLabel();
+        updateMirrorButton();
+        updateColormapPreview();
     }
 
     private void saveSettings() {

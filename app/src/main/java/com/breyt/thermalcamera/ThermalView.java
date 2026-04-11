@@ -192,6 +192,18 @@ public class ThermalView extends View {
     }
 
     /**
+     * Returns representative colors from the current colormap for gradient preview.
+     * Returns colors at positions 0, 127, and 255 (start, middle, end).
+     */
+    public int[] getColormapColors() {
+        return new int[]{
+            Colormaps.apply(currentColormap, 0),
+            Colormaps.apply(currentColormap, 127),
+            Colormaps.apply(currentColormap, 255)
+        };
+    }
+
+    /**
      * Sets the rotation directly.
      */
     public void setRotation(int degrees) {
