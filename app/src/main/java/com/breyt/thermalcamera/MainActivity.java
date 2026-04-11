@@ -3,6 +3,8 @@ package com.breyt.thermalcamera;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
@@ -35,8 +37,11 @@ import android.view.OrientationEventListener;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
@@ -64,6 +69,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private UsbManager usbManager;
     private TextView statusText;
     private ThermalView thermalView;
+    private ConstraintLayout rootLayout;
+    private LinearLayout controlBar;
 
     // Button state indicator views
     private TextView txtRotation;
@@ -228,6 +235,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
         statusText = findViewById(R.id.status_text);
         thermalView = findViewById(R.id.thermal_view);
+        rootLayout = (ConstraintLayout) thermalView.getParent();
+        controlBar = findViewById(R.id.control_bar);
 
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         thermalCamera = new ThermalCamera();
@@ -245,6 +254,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
         // Setup orientation listener for rotation lock feature
         setupOrientationListener();
+
+        // Set initial layout based on current orientation
+        updateLayoutForOrientation(getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE);
 
         // Tap status text to retry connection
         statusText.setOnClickListener(v -> {
@@ -391,13 +403,19 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
                 // Only update if rotation changed
                 if (deviceRotation != lastDeviceRotation) {
+                    // On first reading, just record the orientation without applying rotation
+                    if (lastDeviceRotation == -1) {
+                        lastDeviceRotation = deviceRotation;
+                        return;
+                    }
+
                     int rotationDelta = (deviceRotation - lastDeviceRotation + 360) % 360;
                     lastDeviceRotation = deviceRotation;
 
-                    // Adjust image rotation to compensate for device rotation
+                    // Counter-rotate image to keep it stable from user's perspective
                     runOnUiThread(() -> {
                         int currentImageRotation = thermalView.getImageRotation();
-                        int newImageRotation = (currentImageRotation + rotationDelta) % 360;
+                        int newImageRotation = (currentImageRotation - rotationDelta + 360) % 360;
                         thermalView.setRotation(newImageRotation);
                         updateRotationLabel();
                         saveSettings();
@@ -456,6 +474,90 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         });
 
         popup.show();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Update system bars visibility for new orientation
+        updateSystemBarsVisibility();
+        // Rearrange control bar for new orientation
+        updateLayoutForOrientation(newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE);
+        // Update colormap preview gradient direction
+        updateColormapPreview();
+    }
+
+    private void updateLayoutForOrientation(boolean isLandscape) {
+        ConstraintSet constraintSet = new ConstraintSet();
+        constraintSet.clone(rootLayout);
+
+        if (isLandscape) {
+            // Control bar on the right side
+            controlBar.setOrientation(LinearLayout.VERTICAL);
+            controlBar.setPadding(dp(8), dp(8), dp(20), dp(8));
+
+            // Update control bar constraints: right side, full height
+            constraintSet.clear(R.id.control_bar, ConstraintSet.START);
+            constraintSet.clear(R.id.control_bar, ConstraintSet.BOTTOM);
+            constraintSet.connect(R.id.control_bar, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+            constraintSet.connect(R.id.control_bar, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
+            constraintSet.connect(R.id.control_bar, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+            constraintSet.constrainWidth(R.id.control_bar, ConstraintSet.WRAP_CONTENT);
+            constraintSet.constrainHeight(R.id.control_bar, ConstraintSet.MATCH_CONSTRAINT);
+
+            // Update thermal view constraints: left of control bar
+            constraintSet.connect(R.id.thermal_view, ConstraintSet.END, R.id.control_bar, ConstraintSet.START);
+            constraintSet.connect(R.id.thermal_view, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+
+            // Update button margins for vertical layout
+            updateButtonMarginsForOrientation(true);
+        } else {
+            // Control bar at the bottom
+            controlBar.setOrientation(LinearLayout.HORIZONTAL);
+            controlBar.setPadding(dp(8), dp(8), dp(8), dp(20));
+
+            // Update control bar constraints: bottom, full width
+            constraintSet.clear(R.id.control_bar, ConstraintSet.TOP);
+            constraintSet.connect(R.id.control_bar, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);
+            constraintSet.connect(R.id.control_bar, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+            constraintSet.connect(R.id.control_bar, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+            constraintSet.constrainWidth(R.id.control_bar, ConstraintSet.MATCH_CONSTRAINT);
+            constraintSet.constrainHeight(R.id.control_bar, ConstraintSet.WRAP_CONTENT);
+
+            // Update thermal view constraints: above control bar
+            constraintSet.connect(R.id.thermal_view, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+            constraintSet.connect(R.id.thermal_view, ConstraintSet.BOTTOM, R.id.control_bar, ConstraintSet.TOP);
+
+            // Update button margins for horizontal layout
+            updateButtonMarginsForOrientation(false);
+        }
+
+        constraintSet.applyTo(rootLayout);
+    }
+
+    private void updateButtonMarginsForOrientation(boolean isLandscape) {
+        int marginDp = 12;
+        for (int i = 0; i < controlBar.getChildCount(); i++) {
+            View child = controlBar.getChildAt(i);
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) child.getLayoutParams();
+            if (i < controlBar.getChildCount() - 1) {
+                if (isLandscape) {
+                    params.setMargins(0, 0, 0, dp(marginDp));
+                    params.setMarginEnd(0);
+                } else {
+                    params.setMargins(0, 0, dp(marginDp), 0);
+                    params.setMarginEnd(dp(marginDp));
+                }
+            } else {
+                params.setMargins(0, 0, 0, 0);
+                params.setMarginEnd(0);
+            }
+            child.setLayoutParams(params);
+        }
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density);
     }
 
     @Override
