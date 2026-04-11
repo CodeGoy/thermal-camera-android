@@ -554,8 +554,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private void updateColormapPreview() {
         int[] colors = thermalView.getColormapColors();
         GradientDrawable gradient = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT, colors);
-        gradient.setCornerRadius(4f);
+                GradientDrawable.Orientation.TOP_BOTTOM, colors);
+        gradient.setCornerRadius(2f);
         colormapPreview.setBackground(gradient);
     }
 
