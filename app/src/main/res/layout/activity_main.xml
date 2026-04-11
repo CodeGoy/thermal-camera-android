@@ -5,16 +5,98 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@android:color/black"
     tools:context=".MainActivity">
 
+    <!-- Thermal camera view -->
+    <com.breyt.thermalcamera.ThermalView
+        android:id="@+id/thermal_view"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/control_bar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Status text (shown when camera not connected) -->
     <TextView
-        android:id="@+id/sample_text"
+        android:id="@+id/status_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/hello_world"
+        android:text="@string/waiting_for_camera"
+        android:textColor="@android:color/white"
+        android:textSize="16sp"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="@id/thermal_view"
+        app:layout_constraintEnd_toEndOf="@id/thermal_view"
+        app:layout_constraintStart_toStartOf="@id/thermal_view"
+        app:layout_constraintTop_toTopOf="@id/thermal_view" />
+
+    <!-- Control bar -->
+    <LinearLayout
+        android:id="@+id/control_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#CC000000"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="8dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- Colormap button -->
+        <Button
+            android:id="@+id/btn_colormap"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/colormap"
+            android:textSize="12sp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Contrast decrease -->
+        <Button
+            android:id="@+id/btn_contrast_down"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="@string/contrast_down"
+            android:textSize="16sp" />
+
+        <!-- Contrast increase -->
+        <Button
+            android:id="@+id/btn_contrast_up"
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="@string/contrast_up"
+            android:textSize="16sp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Temperature rounding -->
+        <Button
+            android:id="@+id/btn_rounding"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/rounding_none"
+            android:textSize="12sp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Rotate -->
+        <Button
+            android:id="@+id/btn_rotate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/rotate"
+            android:textSize="12sp"
+            android:layout_marginEnd="8dp" />
+
+        <!-- Screenshot -->
+        <Button
+            android:id="@+id/btn_screenshot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/capture"
+            android:textSize="12sp" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
