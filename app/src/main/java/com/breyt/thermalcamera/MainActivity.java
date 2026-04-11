@@ -11,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.content.Intent;
@@ -27,6 +28,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.PopupMenu;
@@ -182,6 +185,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         setContentView(R.layout.activity_main);
+
+        // Hide status bar in landscape mode
+        updateSystemBarsVisibility();
 
         statusText = findViewById(R.id.status_text);
         thermalView = findViewById(R.id.thermal_view);
@@ -540,6 +546,29 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         }
     }
 
+    @SuppressWarnings("deprecation")
+    private void updateSystemBarsVisibility() {
+        boolean isLandscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (isLandscape) {
+            // Hide status bar in landscape
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                getWindow().getInsetsController().hide(WindowInsets.Type.statusBars());
+                getWindow().getInsetsController().setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            } else {
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+            }
+        } else {
+            // Show status bar in portrait
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                getWindow().getInsetsController().show(WindowInsets.Type.statusBars());
+            } else {
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            }
+        }
+    }
+
     private void updateRotationLabel() {
         txtRotation.setText(thermalView.getImageRotation() + "°");
     }
@@ -553,8 +582,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
     private void updateColormapPreview() {
         int[] colors = thermalView.getColormapColors();
-        GradientDrawable gradient = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM, colors);
+        // In landscape, the preview is horizontal (below icon); in portrait, it's vertical (right of icon)
+        boolean isLandscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        GradientDrawable.Orientation orientation = isLandscape
+                ? GradientDrawable.Orientation.LEFT_RIGHT
+                : GradientDrawable.Orientation.TOP_BOTTOM;
+        GradientDrawable gradient = new GradientDrawable(orientation, colors);
         gradient.setCornerRadius(2f);
         colormapPreview.setBackground(gradient);
     }
