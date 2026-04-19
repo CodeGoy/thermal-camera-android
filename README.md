@@ -6,7 +6,7 @@ Android app for USB thermal cameras (Infiray P2 Pro, Topdon TC001, and compatibl
 
 - Real-time thermal imaging via USB (UVC protocol)
 - Temperature overlays: center, min/max markers, tap-to-measure
-- Temperature scale with optional lock (set fixed min/max range)
+- Temperature scale with optional lock: freeze the color range to a fixed min/max so colors stay stable as the scene changes; adjust the range manually via the menu
 - Multiple colormaps: Turbo, Inferno, Ironbow, Grayscale
 - Adjustable contrast
 - Rotation sync with device orientation (long-press rotate to toggle lock)

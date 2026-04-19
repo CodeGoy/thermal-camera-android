@@ -512,12 +512,12 @@ public class ThermalView extends View {
     }
 
     private void applyColormap() {
-        byte[] data = thermalData.imageData;
-
-        // When scale is locked, map pixel values based on locked temperature range
+        // When scale is locked, map pixel values based on locked temperature range.
+        // Use thermalImageData (linearly normalized from raw 16-bit thermal values) so that
+        // pixel 0 == minTemp and pixel 255 == maxTemp by construction. This avoids color
+        // jumps caused by the camera AGC non-linearity that affects imageData.
         if (scaleLocked) {
-            // Each pixel value (0-255) represents a temperature in [thermalData.minTemp, thermalData.maxTemp]
-            // We want to remap based on [lockedMinTemp, lockedMaxTemp]
+            byte[] data = thermalData.thermalImageData;
             float actualRange = thermalData.maxTemp - thermalData.minTemp;
             float lockedRange = lockedMaxTemp - lockedMinTemp;
 
@@ -536,7 +536,8 @@ public class ThermalView extends View {
                 bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
             }
         } else {
-            // Auto mode: normalize based on actual image data range
+            // Auto mode: normalize based on actual image data range (camera AGC grayscale)
+            byte[] data = thermalData.imageData;
             int imgMin = 255, imgMax = 0;
             for (byte b : data) {
                 int v = b & 0xFF;
@@ -838,12 +839,10 @@ public class ThermalView extends View {
                 tapY = imgY;
                 tapTime = System.currentTimeMillis();
 
-                // Approximate temperature based on min/max range and pixel intensity
-                int pixelVal = thermalData.imageData[imgY * ThermalData.WIDTH + imgX] & 0xFF;
-                float normalized = pixelVal / 255f;
-                float minTemp = getEffectiveMinTemp();
-                float maxTemp = getEffectiveMaxTemp();
-                tapTemp = minTemp + normalized * (maxTemp - minTemp);
+                // Read temperature from linearly-normalized thermal image data.
+                // thermalImageData guarantees pixel 0 = minTemp, pixel 255 = maxTemp.
+                int pixelVal = thermalData.thermalImageData[imgY * ThermalData.WIDTH + imgX] & 0xFF;
+                tapTemp = thermalData.minTemp + (pixelVal / 255f) * (thermalData.maxTemp - thermalData.minTemp);
 
                 invalidate();
             }

@@ -181,6 +181,25 @@ static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
     maxTemp = roundTemperature(maxTemp);
     avgTemp = roundTemperature(avgTemp);
 
+    // Build linearly-normalized thermal image from raw 16-bit values.
+    // Guarantees: pixel 0 = minTemp, pixel 255 = maxTemp, linear in between.
+    // Used by the locked scale colormap path to avoid AGC-induced color jumps.
+    uint8_t thermalLinear[FRAME_WIDTH * THERMAL_HEIGHT];
+    {
+        float range = maxTemp - minTemp;
+        if (range < 0.001f) range = 0.001f;
+        for (int y = 0; y < THERMAL_HEIGHT; y++) {
+            for (int x = 0; x < FRAME_WIDTH; x++) {
+                uint8_t lo = thermal_data[y * stride + x * 2];
+                uint8_t hi = thermal_data[y * stride + x * 2 + 1];
+                uint16_t raw = lo | (hi << 8);
+                float norm = (rawToCelsius(raw) - minTemp) / range;
+                norm = fmaxf(0.0f, fminf(1.0f, norm));
+                thermalLinear[y * FRAME_WIDTH + x] = (uint8_t)(norm * 255.0f + 0.5f);
+            }
+        }
+    }
+
     // Call Java callback
     if (g_jvm && g_callback_obj && g_callback_method) {
         JNIEnv *env;
@@ -199,19 +218,25 @@ static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
             return;
         }
 
-        // Create byte array for grayscale image
+        // Create byte arrays for camera-AGC grayscale and linear thermal image
         jbyteArray imageArray = env->NewByteArray(FRAME_WIDTH * IMAGE_HEIGHT);
         env->SetByteArrayRegion(imageArray, 0, FRAME_WIDTH * IMAGE_HEIGHT,
                                 reinterpret_cast<jbyte*>(grayscale));
 
-        // Call: onFrame(byte[] image, float centerTemp, float minTemp, float maxTemp,
-        //               float avgTemp, int minRow, int minCol, int maxRow, int maxCol)
+        jbyteArray thermalLinearArray = env->NewByteArray(FRAME_WIDTH * THERMAL_HEIGHT);
+        env->SetByteArrayRegion(thermalLinearArray, 0, FRAME_WIDTH * THERMAL_HEIGHT,
+                                reinterpret_cast<jbyte*>(thermalLinear));
+
+        // Call: onFrame(byte[] imageData, byte[] thermalImageData,
+        //               float centerTemp, float minTemp, float maxTemp, float avgTemp,
+        //               int minRow, int minCol, int maxRow, int maxCol)
         env->CallVoidMethod(g_callback_obj, g_callback_method,
-                           imageArray,
+                           imageArray, thermalLinearArray,
                            centerTemp, minTemp, maxTemp, avgTemp,
                            minRow, minCol, maxRow, maxCol);
 
         env->DeleteLocalRef(imageArray);
+        env->DeleteLocalRef(thermalLinearArray);
 
         if (attached) {
             g_jvm->DetachCurrentThread();
@@ -351,10 +376,11 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeStartStream(
     // Store callback reference
     g_callback_obj = env->NewGlobalRef(callback);
     jclass callbackClass = env->GetObjectClass(callback);
-    // Signature: (byte[] image, float centerTemp, float minTemp, float maxTemp,
-    //             float avgTemp, int minRow, int minCol, int maxRow, int maxCol)V
+    // Signature: (byte[] imageData, byte[] thermalImageData,
+    //             float centerTemp, float minTemp, float maxTemp, float avgTemp,
+    //             int minRow, int minCol, int maxRow, int maxCol)V
     g_callback_method = env->GetMethodID(callbackClass, "onFrame",
-            "([BFFFFIIII)V");
+            "([B[BFFFFIIII)V");
 
     if (g_callback_method == nullptr) {
         LOGE("Failed to find onFrame method");

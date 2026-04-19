@@ -10,8 +10,11 @@ public class ThermalData {
     /** Height of the thermal image */
     public static final int HEIGHT = 192;
 
-    /** Grayscale image data (Y channel from YUYV) */
+    /** Grayscale image data (Y channel from YUYV, camera AGC-processed) */
     public final byte[] imageData;
+
+    /** Linearly normalized thermal image (pixel 0 = minTemp, pixel 255 = maxTemp) */
+    public final byte[] thermalImageData;
 
     /** Temperature at the center of the frame */
     public final float centerTemp;
@@ -37,10 +40,11 @@ public class ThermalData {
     /** Column position of maximum temperature (0-255) */
     public int maxCol;
 
-    public ThermalData(byte[] imageData,
+    public ThermalData(byte[] imageData, byte[] thermalImageData,
                        float centerTemp, float minTemp, float maxTemp, float avgTemp,
                        int minRow, int minCol, int maxRow, int maxCol) {
         this.imageData = imageData;
+        this.thermalImageData = thermalImageData;
         this.centerTemp = centerTemp;
         this.minTemp = minTemp;
         this.maxTemp = maxTemp;

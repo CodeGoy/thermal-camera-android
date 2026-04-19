@@ -128,12 +128,12 @@ public class ThermalCamera {
      */
     private class NativeFrameCallback {
         @SuppressWarnings("unused") // Called from JNI
-        public void onFrame(byte[] imageData,
+        public void onFrame(byte[] imageData, byte[] thermalImageData,
                            float centerTemp, float minTemp, float maxTemp, float avgTemp,
                            int minRow, int minCol, int maxRow, int maxCol) {
             if (frameCallback != null) {
                 ThermalData data = new ThermalData(
-                        imageData,
+                        imageData, thermalImageData,
                         centerTemp, minTemp, maxTemp, avgTemp,
                         minRow, minCol, maxRow, maxCol
                 );
