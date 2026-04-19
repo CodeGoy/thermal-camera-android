@@ -23,6 +23,13 @@
         android:title="@string/menu_show_scale"
         android:checkable="true" />
     <item
+        android:id="@+id/menu_scale_lock"
+        android:title="@string/menu_scale_lock"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_scale_adjust"
+        android:title="@string/menu_scale_adjust" />
+    <item
         android:id="@+id/menu_camera_info"
         android:title="@string/menu_camera_info" />
 </menu>

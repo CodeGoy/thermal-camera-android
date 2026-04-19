@@ -54,6 +54,11 @@ public class ThermalView extends View {
     private Bitmap scaleBitmap;
     private int[] scalePixels;
 
+    // Scale lock - when enabled, scale uses locked min/max values
+    private boolean scaleLocked = false;
+    private float lockedMinTemp = 0f;
+    private float lockedMaxTemp = 100f;
+
     // Gesture detectors
     private ScaleGestureDetector scaleDetector;
     private GestureDetector gestureDetector;
@@ -283,6 +288,77 @@ public class ThermalView extends View {
         return showMinMaxPoints;
     }
 
+    /**
+     * Sets whether the temperature scale is locked.
+     * When locking, captures current min/max values.
+     */
+    public void setScaleLocked(boolean locked) {
+        if (locked && !scaleLocked && thermalData != null) {
+            // Capture current values when locking
+            lockedMinTemp = thermalData.minTemp;
+            lockedMaxTemp = thermalData.maxTemp;
+        }
+        scaleLocked = locked;
+        invalidate();
+    }
+
+    /**
+     * Returns whether the temperature scale is locked.
+     */
+    public boolean isScaleLocked() {
+        return scaleLocked;
+    }
+
+    /**
+     * Sets the locked minimum temperature.
+     */
+    public void setLockedMinTemp(float temp) {
+        lockedMinTemp = temp;
+        invalidate();
+    }
+
+    /**
+     * Gets the locked minimum temperature.
+     */
+    public float getLockedMinTemp() {
+        return lockedMinTemp;
+    }
+
+    /**
+     * Sets the locked maximum temperature.
+     */
+    public void setLockedMaxTemp(float temp) {
+        lockedMaxTemp = temp;
+        invalidate();
+    }
+
+    /**
+     * Gets the locked maximum temperature.
+     */
+    public float getLockedMaxTemp() {
+        return lockedMaxTemp;
+    }
+
+    /**
+     * Returns the effective minimum temperature (locked or actual).
+     */
+    public float getEffectiveMinTemp() {
+        if (scaleLocked) {
+            return lockedMinTemp;
+        }
+        return thermalData != null ? thermalData.minTemp : 0f;
+    }
+
+    /**
+     * Returns the effective maximum temperature (locked or actual).
+     */
+    public float getEffectiveMaxTemp() {
+        if (scaleLocked) {
+            return lockedMaxTemp;
+        }
+        return thermalData != null ? thermalData.maxTemp : 100f;
+    }
+
     private void updateFps() {
         frameCount++;
         long now = System.currentTimeMillis();
@@ -312,6 +388,7 @@ public class ThermalView extends View {
 
         // For 90/270 rotation, swap the aspect ratio
         boolean isRotated90or270 = (rotationDegrees == 90 || rotationDegrees == 270);
+
         float imageAspect = isRotated90or270
                 ? (float) ThermalData.HEIGHT / ThermalData.WIDTH
                 : (float) ThermalData.WIDTH / ThermalData.HEIGHT;
@@ -406,10 +483,9 @@ public class ThermalView extends View {
 
         // Transform marker positions to screen coordinates and draw labels
         if (showMinMaxPoints) {
-            float[] pts = new float[6];
+            float[] pts = new float[4];
             pts[0] = maxViewX; pts[1] = maxViewY;
             pts[2] = minViewX; pts[3] = minViewY;
-            pts[4] = tapViewX; pts[5] = tapViewY;
             matrix.mapPoints(pts);
 
             String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
@@ -417,11 +493,15 @@ public class ThermalView extends View {
 
             String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
             drawMarkerLabelAtScreen(canvas, minLabel, pts[2], pts[3]);
+        }
 
-            if (showTap) {
-                String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
-                drawMarkerLabelAtScreen(canvas, tapLabel, pts[4], pts[5]);
-            }
+        // Draw tap temperature label (always, regardless of showMinMaxPoints)
+        if (showTap) {
+            float[] tapPts = new float[2];
+            tapPts[0] = tapViewX; tapPts[1] = tapViewY;
+            matrix.mapPoints(tapPts);
+            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
+            drawMarkerLabelAtScreen(canvas, tapLabel, tapPts[0], tapPts[1]);
         }
 
         // Draw HUD overlay (not affected by zoom)
@@ -433,28 +513,49 @@ public class ThermalView extends View {
 
     private void applyColormap() {
         byte[] data = thermalData.imageData;
-        float minVal = 0f, maxVal = 255f;
 
-        // Apply contrast/brightness normalization
-        // Find actual min/max in the image data for better contrast
-        int imgMin = 255, imgMax = 0;
-        for (byte b : data) {
-            int v = b & 0xFF;
-            if (v < imgMin) imgMin = v;
-            if (v > imgMax) imgMax = v;
-        }
+        // When scale is locked, map pixel values based on locked temperature range
+        if (scaleLocked) {
+            // Each pixel value (0-255) represents a temperature in [thermalData.minTemp, thermalData.maxTemp]
+            // We want to remap based on [lockedMinTemp, lockedMaxTemp]
+            float actualRange = thermalData.maxTemp - thermalData.minTemp;
+            float lockedRange = lockedMaxTemp - lockedMinTemp;
 
-        float range = Math.max(1, imgMax - imgMin);
+            for (int i = 0; i < data.length; i++) {
+                // Convert pixel to actual temperature
+                float pixelNorm = (data[i] & 0xFF) / 255f;
+                float actualTemp = thermalData.minTemp + pixelNorm * actualRange;
 
-        for (int i = 0; i < data.length; i++) {
-            // Normalize to 0-1 based on image range
-            float normalized = ((data[i] & 0xFF) - imgMin) / range;
+                // Map temperature to locked range
+                float normalized = (actualTemp - lockedMinTemp) / lockedRange;
 
-            // Apply contrast
-            normalized = 0.5f + (normalized - 0.5f) * contrast;
-            normalized = Math.max(0f, Math.min(1f, normalized));
+                // Apply contrast
+                normalized = 0.5f + (normalized - 0.5f) * contrast;
+                normalized = Math.max(0f, Math.min(1f, normalized));
 
-            bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+                bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+            }
+        } else {
+            // Auto mode: normalize based on actual image data range
+            int imgMin = 255, imgMax = 0;
+            for (byte b : data) {
+                int v = b & 0xFF;
+                if (v < imgMin) imgMin = v;
+                if (v > imgMax) imgMax = v;
+            }
+
+            float range = Math.max(1, imgMax - imgMin);
+
+            for (int i = 0; i < data.length; i++) {
+                // Normalize to 0-1 based on image range
+                float normalized = ((data[i] & 0xFF) - imgMin) / range;
+
+                // Apply contrast
+                normalized = 0.5f + (normalized - 0.5f) * contrast;
+                normalized = Math.max(0f, Math.min(1f, normalized));
+
+                bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+            }
         }
 
         bitmap.setPixels(bitmapPixels, 0, ThermalData.WIDTH, 0, 0,
@@ -580,15 +681,27 @@ public class ThermalView extends View {
         // Draw temperature labels
         hudTextPaint.setTextSize(20f);
 
+        // Use effective temps (locked or actual)
+        float displayMaxTemp = getEffectiveMaxTemp();
+        float displayMinTemp = getEffectiveMinTemp();
+
         // Max temperature (top)
-        String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
+        String maxLabel = String.format(Locale.US, "%.1f\u00B0", displayMaxTemp);
         canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 6f,
                 scaleTop + 6f, hudTextPaint);
 
         // Min temperature (bottom)
-        String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+        String minLabel = String.format(Locale.US, "%.1f\u00B0", displayMinTemp);
         canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 6f,
                 scaleBottom, hudTextPaint);
+
+        // Draw lock indicator when scale is locked
+        if (scaleLocked) {
+            String lockIcon = "\uD83D\uDD12";  // Lock emoji
+            hudTextPaint.setTextSize(16f);
+            canvas.drawText(lockIcon, scaleRight - hudTextPaint.measureText(lockIcon) / 2f - scaleWidth / 2f,
+                    scaleTop - 10f, hudTextPaint);
+        }
 
         if (SHOW_AVERAGE) {
             // Average temperature (middle, with marker)
@@ -673,20 +786,33 @@ public class ThermalView extends View {
             float centerX = left + drawWidth / 2f;
             float centerY = top + drawHeight / 2f;
 
-            // Transform tap coordinates back to image space (undo zoom/pan)
-            float tapViewX = (e.getX() - viewWidth / 2f) / scaleFactor + viewWidth / 2f - translateX;
-            float tapViewY = (e.getY() - viewHeight / 2f) / scaleFactor + viewHeight / 2f - translateY;
+            // Undo transforms in REVERSE order of how they're applied in onDraw:
+            // onDraw order: zoom/pan -> flip -> rotate
+            // Undo order: rotate -> flip -> zoom/pan
 
-            // Undo rotation (rotate in opposite direction around center)
+            // Start with screen coordinates
+            float tapViewX = e.getX();
+            float tapViewY = e.getY();
+
+            // Step 1: Undo zoom/pan to get to the coordinate space where flip/rotate are applied
+            tapViewX = (tapViewX - viewWidth / 2f) / scaleFactor + viewWidth / 2f - translateX;
+            tapViewY = (tapViewY - viewHeight / 2f) / scaleFactor + viewHeight / 2f - translateY;
+
+            // Step 2: Undo rotation (rotate in opposite direction around center)
             float dx = tapViewX - centerX;
             float dy = tapViewY - centerY;
             double radians = Math.toRadians(-rotationDegrees);
             float rotatedDx = (float) (dx * Math.cos(radians) - dy * Math.sin(radians));
             float rotatedDy = (float) (dx * Math.sin(radians) + dy * Math.cos(radians));
-            tapViewX = centerX + rotatedDx;
-            tapViewY = centerY + rotatedDy;
+            if (isRotated90or270 && !isMirrored()) {
+                tapViewX = centerX - rotatedDx;
+                tapViewY = centerY - rotatedDy;
+            } else {
+                tapViewX = centerX + rotatedDx;
+                tapViewY = centerY + rotatedDy;
+            }
 
-            // Undo horizontal flip (only if not in mirror/selfie mode)
+            // Step 3: Undo horizontal flip (only if not in mirror/selfie mode)
             if (!mirrored) {
                 tapViewX = centerX - (tapViewX - centerX);
             }
@@ -715,7 +841,9 @@ public class ThermalView extends View {
                 // Approximate temperature based on min/max range and pixel intensity
                 int pixelVal = thermalData.imageData[imgY * ThermalData.WIDTH + imgX] & 0xFF;
                 float normalized = pixelVal / 255f;
-                tapTemp = thermalData.minTemp + normalized * (thermalData.maxTemp - thermalData.minTemp);
+                float minTemp = getEffectiveMinTemp();
+                float maxTemp = getEffectiveMaxTemp();
+                tapTemp = minTemp + normalized * (maxTemp - minTemp);
 
                 invalidate();
             }

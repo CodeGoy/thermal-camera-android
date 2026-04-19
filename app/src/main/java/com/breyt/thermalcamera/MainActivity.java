@@ -39,6 +39,7 @@ import android.view.WindowInsetsController;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ImageView;
@@ -65,6 +66,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private static final String PREF_ROUNDING = "rounding";
     private static final String PREF_ROTATION_LOCK = "rotationLock";
     private static final String PREF_SHOW_SCALE = "showScale";
+    private static final String PREF_SCALE_LOCK = "scaleLock";
+    private static final String PREF_LOCKED_MIN_TEMP = "lockedMinTemp";
+    private static final String PREF_LOCKED_MAX_TEMP = "lockedMaxTemp";
 
     private UsbManager usbManager;
     private TextView statusText;
@@ -395,6 +399,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         // Update min/max points checkbox
         popup.getMenu().findItem(R.id.menu_show_scale).setChecked(thermalView.isShowingMinMaxPoints());
 
+        // Update scale lock checkbox
+        popup.getMenu().findItem(R.id.menu_scale_lock).setChecked(thermalView.isScaleLocked());
+
+        // Only show scale adjust when scale is locked
+        popup.getMenu().findItem(R.id.menu_scale_adjust).setVisible(thermalView.isScaleLocked());
+
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
             boolean keepOpen = false;
@@ -426,6 +436,12 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 thermalView.setShowMinMaxPoints(!thermalView.isShowingMinMaxPoints());
                 saveSettings();
                 keepOpen = true;
+            } else if (id == R.id.menu_scale_lock) {
+                thermalView.setScaleLocked(!thermalView.isScaleLocked());
+                saveSettings();
+                keepOpen = true;
+            } else if (id == R.id.menu_scale_adjust) {
+                showScaleAdjustDialog();
             } else if (id == R.id.menu_camera_info) {
                 showCameraInfoDialog();
             }
@@ -849,6 +865,39 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 .show();
     }
 
+    private void showScaleAdjustDialog() {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_scale_adjust, null);
+        EditText editMin = dialogView.findViewById(R.id.edit_min_temp);
+        EditText editMax = dialogView.findViewById(R.id.edit_max_temp);
+
+        // Pre-fill with current locked values
+        editMin.setText(String.format(Locale.US, "%.1f", thermalView.getLockedMinTemp()));
+        editMax.setText(String.format(Locale.US, "%.1f", thermalView.getLockedMaxTemp()));
+
+        new AlertDialog.Builder(this)
+                .setTitle("Adjust Scale Range")
+                .setView(dialogView)
+                .setPositiveButton("OK", (dialog, which) -> {
+                    try {
+                        float minTemp = Float.parseFloat(editMin.getText().toString());
+                        float maxTemp = Float.parseFloat(editMax.getText().toString());
+
+                        if (minTemp >= maxTemp) {
+                            Toast.makeText(this, "Min must be less than max", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        thermalView.setLockedMinTemp(minTemp);
+                        thermalView.setLockedMaxTemp(maxTemp);
+                        saveSettings();
+                    } catch (NumberFormatException e) {
+                        Toast.makeText(this, "Invalid number format", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void takeScreenshot() {
         // Capture the thermal view
         thermalView.setDrawingCacheEnabled(true);
@@ -961,6 +1010,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         editor.putInt(PREF_ROUNDING, currentRoundingMode);
         editor.putBoolean(PREF_ROTATION_LOCK, rotationLockEnabled);
         editor.putBoolean(PREF_SHOW_SCALE, thermalView.isShowingMinMaxPoints());
+        editor.putBoolean(PREF_SCALE_LOCK, thermalView.isScaleLocked());
+        editor.putFloat(PREF_LOCKED_MIN_TEMP, thermalView.getLockedMinTemp());
+        editor.putFloat(PREF_LOCKED_MAX_TEMP, thermalView.getLockedMaxTemp());
         editor.apply();
     }
 
@@ -974,6 +1026,13 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         thermalCamera.setRoundingMode(currentRoundingMode);
         rotationLockEnabled = prefs.getBoolean(PREF_ROTATION_LOCK, true);
         thermalView.setShowMinMaxPoints(prefs.getBoolean(PREF_SHOW_SCALE, false));
+        // Load scale lock settings - load min/max first, then locked state
+        thermalView.setLockedMinTemp(prefs.getFloat(PREF_LOCKED_MIN_TEMP, 0f));
+        thermalView.setLockedMaxTemp(prefs.getFloat(PREF_LOCKED_MAX_TEMP, 100f));
+        if (prefs.getBoolean(PREF_SCALE_LOCK, false)) {
+            // Directly set scaleLocked without capturing current temps (they're loaded above)
+            thermalView.setScaleLocked(true);
+        }
     }
 
     /** Returns the libuvc version string (implemented in native-lib.cpp). */
