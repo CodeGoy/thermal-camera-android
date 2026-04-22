@@ -41,8 +41,23 @@ public class ThermalView extends View {
     private static final float MIN_SCALE = 1.0f;
     private static final float MAX_SCALE = 5.0f;
 
+    private static final boolean SHOW_AVERAGE = false;
+
     // Rotation (0, 90, 180, 270 degrees)
     private int rotationDegrees = 0;
+
+    // Mirror mode (horizontal flip for selfie mode)
+    private boolean mirrored = false;
+
+    // Temperature scale and min/max points display
+    private boolean showMinMaxPoints = false;
+    private Bitmap scaleBitmap;
+    private int[] scalePixels;
+
+    // Scale lock - when enabled, scale uses locked min/max values
+    private boolean scaleLocked = false;
+    private float lockedMinTemp = 0f;
+    private float lockedMaxTemp = 100f;
 
     // Gesture detectors
     private ScaleGestureDetector scaleDetector;
@@ -156,6 +171,67 @@ public class ThermalView extends View {
     }
 
     /**
+     * Gets the current contrast value.
+     */
+    public float getContrast() {
+        return contrast;
+    }
+
+    /**
+     * Sets the contrast value directly.
+     */
+    public void setContrast(float value) {
+        contrast = Math.max(0.5f, Math.min(3.0f, value));
+        invalidate();
+    }
+
+    /**
+     * Gets the current colormap index.
+     */
+    public int getColormapIndex() {
+        return colormapIndex;
+    }
+
+    /**
+     * Sets the colormap by index.
+     */
+    public void setColormapIndex(int index) {
+        if (index >= 0 && index < Colormaps.ALL.length) {
+            colormapIndex = index;
+            currentColormap = Colormaps.ALL[colormapIndex];
+            invalidate();
+        }
+    }
+
+    /**
+     * Returns representative colors from the current colormap for gradient preview.
+     * Returns colors at positions 0, 127, and 255 (start, middle, end).
+     */
+    public int[] getColormapColors() {
+        return new int[]{
+            Colormaps.apply(currentColormap, 0),
+            Colormaps.apply(currentColormap, 127),
+            Colormaps.apply(currentColormap, 255)
+        };
+    }
+
+    /**
+     * Sets the rotation directly.
+     */
+    public void setRotation(int degrees) {
+        rotationDegrees = degrees % 360;
+        invalidate();
+    }
+
+    /**
+     * Sets the mirror mode directly.
+     */
+    public void setMirrored(boolean mirror) {
+        mirrored = mirror;
+        invalidate();
+    }
+
+    /**
      * Resets zoom to default.
      */
     public void resetZoom() {
@@ -183,6 +259,106 @@ public class ThermalView extends View {
         return rotationDegrees;
     }
 
+    /**
+     * Toggles mirrored (selfie) mode.
+     * @return The new mirror state
+     */
+    public boolean toggleMirror() {
+        mirrored = !mirrored;
+        invalidate();
+        return mirrored;
+    }
+
+    public boolean isMirrored() {
+        return mirrored;
+    }
+
+    /**
+     * Sets whether the min/max temperature points are shown.
+     */
+    public void setShowMinMaxPoints(boolean show) {
+        showMinMaxPoints = show;
+        invalidate();
+    }
+
+    /**
+     * Returns whether the min/max temperature points are shown.
+     */
+    public boolean isShowingMinMaxPoints() {
+        return showMinMaxPoints;
+    }
+
+    /**
+     * Sets whether the temperature scale is locked.
+     * When locking, captures current min/max values.
+     */
+    public void setScaleLocked(boolean locked) {
+        if (locked && !scaleLocked && thermalData != null) {
+            // Capture current values when locking
+            lockedMinTemp = thermalData.minTemp;
+            lockedMaxTemp = thermalData.maxTemp;
+        }
+        scaleLocked = locked;
+        invalidate();
+    }
+
+    /**
+     * Returns whether the temperature scale is locked.
+     */
+    public boolean isScaleLocked() {
+        return scaleLocked;
+    }
+
+    /**
+     * Sets the locked minimum temperature.
+     */
+    public void setLockedMinTemp(float temp) {
+        lockedMinTemp = temp;
+        invalidate();
+    }
+
+    /**
+     * Gets the locked minimum temperature.
+     */
+    public float getLockedMinTemp() {
+        return lockedMinTemp;
+    }
+
+    /**
+     * Sets the locked maximum temperature.
+     */
+    public void setLockedMaxTemp(float temp) {
+        lockedMaxTemp = temp;
+        invalidate();
+    }
+
+    /**
+     * Gets the locked maximum temperature.
+     */
+    public float getLockedMaxTemp() {
+        return lockedMaxTemp;
+    }
+
+    /**
+     * Returns the effective minimum temperature (locked or actual).
+     */
+    public float getEffectiveMinTemp() {
+        if (scaleLocked) {
+            return lockedMinTemp;
+        }
+        return thermalData != null ? thermalData.minTemp : 0f;
+    }
+
+    /**
+     * Returns the effective maximum temperature (locked or actual).
+     */
+    public float getEffectiveMaxTemp() {
+        if (scaleLocked) {
+            return lockedMaxTemp;
+        }
+        return thermalData != null ? thermalData.maxTemp : 100f;
+    }
+
     private void updateFps() {
         frameCount++;
         long now = System.currentTimeMillis();
@@ -198,12 +374,8 @@ public class ThermalView extends View {
         super.onDraw(canvas);
 
         if (thermalData == null || thermalData.imageData == null) {
-            // Draw placeholder
+            // Draw placeholder background only - status text is handled by MainActivity
             canvas.drawColor(Color.DKGRAY);
-            textPaint.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("Waiting for camera...",
-                    getWidth() / 2f, getHeight() / 2f, textPaint);
-            textPaint.setTextAlign(Paint.Align.LEFT);
             return;
         }
 
@@ -216,6 +388,7 @@ public class ThermalView extends View {
 
         // For 90/270 rotation, swap the aspect ratio
         boolean isRotated90or270 = (rotationDegrees == 90 || rotationDegrees == 270);
+
         float imageAspect = isRotated90or270
                 ? (float) ThermalData.HEIGHT / ThermalData.WIDTH
                 : (float) ThermalData.WIDTH / ThermalData.HEIGHT;
@@ -239,9 +412,12 @@ public class ThermalView extends View {
         canvas.scale(scaleFactor, scaleFactor);
         canvas.translate(-viewWidth / 2f + translateX, -viewHeight / 2f + translateY);
 
-        // Apply rotation around center of the image area
+        // Apply rotation and horizontal flip around center of the image area
         float centerX = left + drawWidth / 2f;
         float centerY = top + drawHeight / 2f;
+        if (!mirrored) {
+            canvas.scale(-1f, 1f, centerX, centerY);  // Flip horizontally to correct camera mirror
+        }
         canvas.rotate(rotationDegrees, centerX, centerY);
 
         // Adjust draw rect for rotation (swap dimensions for 90/270)
@@ -263,79 +439,124 @@ public class ThermalView extends View {
         float scaleX = destRect.width() / ThermalData.WIDTH;
         float scaleY = destRect.height() / ThermalData.HEIGHT;
 
-        // Draw crosshairs at center
-        float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
-        float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
-        float crossSize = 20f;
+        // Draw crosshairs and min/max markers only when enabled
+        float maxViewX = 0, maxViewY = 0, minViewX = 0, minViewY = 0;
+        if (showMinMaxPoints) {
+            // Draw crosshairs at center
+            float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
+            float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
+            float crossSize = 20f;
 
-        // Inner
-        canvas.drawLine(crossCenterX - crossSize, crossCenterY,
-                crossCenterX + crossSize, crossCenterY, crosshairPaint);
-        canvas.drawLine(crossCenterX, crossCenterY - crossSize,
-                crossCenterX, crossCenterY + crossSize, crosshairPaint);
+            // Inner
+            canvas.drawLine(crossCenterX - crossSize, crossCenterY,
+                    crossCenterX + crossSize, crossCenterY, crosshairPaint);
+            canvas.drawLine(crossCenterX, crossCenterY - crossSize,
+                    crossCenterX, crossCenterY + crossSize, crosshairPaint);
 
-        // Bounds for label positioning
-        float imgLeft = destRect.left;
-        float imgTop = destRect.top;
-        float imgRight = destRect.right;
-        float imgBottom = destRect.bottom;
+            // Draw max temperature marker (red circle)
+            maxViewX = destRect.left + thermalData.maxCol * scaleX;
+            maxViewY = destRect.top + thermalData.maxRow * scaleY;
+            markerPaint.setColor(Color.RED);
+            canvas.drawCircle(maxViewX, maxViewY, 12f, markerPaint);
 
-        // Draw max temperature marker (red circle)
-        float maxViewX = destRect.left + thermalData.maxCol * scaleX;
-        float maxViewY = destRect.top + thermalData.maxRow * scaleY;
-        markerPaint.setColor(Color.RED);
-        canvas.drawCircle(maxViewX, maxViewY, 12f, markerPaint);
-        String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
-        drawMarkerLabel(canvas, maxLabel, maxViewX, maxViewY, imgLeft, imgTop, imgRight, imgBottom);
+            // Draw min temperature marker (blue circle)
+            minViewX = destRect.left + thermalData.minCol * scaleX;
+            minViewY = destRect.top + thermalData.minRow * scaleY;
+            markerPaint.setColor(Color.BLUE);
+            canvas.drawCircle(minViewX, minViewY, 12f, markerPaint);
+        }
 
-        // Draw min temperature marker (blue circle)
-        float minViewX = destRect.left + thermalData.minCol * scaleX;
-        float minViewY = destRect.top + thermalData.minRow * scaleY;
-        markerPaint.setColor(Color.BLUE);
-        canvas.drawCircle(minViewX, minViewY, 12f, markerPaint);
-        String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
-        drawMarkerLabel(canvas, minLabel, minViewX, minViewY, imgLeft, imgTop, imgRight, imgBottom);
-
-        // Draw tap temperature if recent
-        if (!Float.isNaN(tapTemp) && System.currentTimeMillis() - tapTime < 3000) {
-            float tapViewX = destRect.left + tapX * scaleX;
-            float tapViewY = destRect.top + tapY * scaleY;
+        // Draw tap temperature marker if recent
+        float tapViewX = 0, tapViewY = 0;
+        boolean showTap = !Float.isNaN(tapTemp) && System.currentTimeMillis() - tapTime < 3000;
+        if (showTap) {
+            tapViewX = destRect.left + tapX * scaleX;
+            tapViewY = destRect.top + tapY * scaleY;
             markerPaint.setColor(Color.GREEN);
             canvas.drawCircle(tapViewX, tapViewY, 10f, markerPaint);
-            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
-            drawMarkerLabel(canvas, tapLabel, tapViewX, tapViewY, imgLeft, imgTop, imgRight, imgBottom);
         }
+
+        // Get current transformation matrix to convert marker positions to screen coordinates
+        android.graphics.Matrix matrix = canvas.getMatrix();
 
         canvas.restore();
 
+        // Transform marker positions to screen coordinates and draw labels
+        if (showMinMaxPoints) {
+            float[] pts = new float[4];
+            pts[0] = maxViewX; pts[1] = maxViewY;
+            pts[2] = minViewX; pts[3] = minViewY;
+            matrix.mapPoints(pts);
+
+            String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
+            drawMarkerLabelAtScreen(canvas, maxLabel, pts[0], pts[1]);
+
+            String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+            drawMarkerLabelAtScreen(canvas, minLabel, pts[2], pts[3]);
+        }
+
+        // Draw tap temperature label (always, regardless of showMinMaxPoints)
+        if (showTap) {
+            float[] tapPts = new float[2];
+            tapPts[0] = tapViewX; tapPts[1] = tapViewY;
+            matrix.mapPoints(tapPts);
+            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
+            drawMarkerLabelAtScreen(canvas, tapLabel, tapPts[0], tapPts[1]);
+        }
+
         // Draw HUD overlay (not affected by zoom)
         drawHud(canvas);
+
+        // Always draw temperature scale
+        drawTemperatureScale(canvas);
     }
 
     private void applyColormap() {
-        byte[] data = thermalData.imageData;
-        float minVal = 0f, maxVal = 255f;
+        // When scale is locked, map pixel values based on locked temperature range.
+        // Use thermalImageData (linearly normalized from raw 16-bit thermal values) so that
+        // pixel 0 == minTemp and pixel 255 == maxTemp by construction. This avoids color
+        // jumps caused by the camera AGC non-linearity that affects imageData.
+        if (scaleLocked) {
+            byte[] data = thermalData.thermalImageData;
+            float actualRange = thermalData.maxTemp - thermalData.minTemp;
+            float lockedRange = lockedMaxTemp - lockedMinTemp;
 
-        // Apply contrast/brightness normalization
-        // Find actual min/max in the image data for better contrast
-        int imgMin = 255, imgMax = 0;
-        for (byte b : data) {
-            int v = b & 0xFF;
-            if (v < imgMin) imgMin = v;
-            if (v > imgMax) imgMax = v;
-        }
+            for (int i = 0; i < data.length; i++) {
+                // Convert pixel to actual temperature
+                float pixelNorm = (data[i] & 0xFF) / 255f;
+                float actualTemp = thermalData.minTemp + pixelNorm * actualRange;
 
-        float range = Math.max(1, imgMax - imgMin);
+                // Map temperature to locked range
+                float normalized = (actualTemp - lockedMinTemp) / lockedRange;
 
-        for (int i = 0; i < data.length; i++) {
-            // Normalize to 0-1 based on image range
-            float normalized = ((data[i] & 0xFF) - imgMin) / range;
+                // Apply contrast
+                normalized = 0.5f + (normalized - 0.5f) * contrast;
+                normalized = Math.max(0f, Math.min(1f, normalized));
 
-            // Apply contrast
-            normalized = 0.5f + (normalized - 0.5f) * contrast;
-            normalized = Math.max(0f, Math.min(1f, normalized));
+                bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+            }
+        } else {
+            // Auto mode: normalize based on actual image data range (camera AGC grayscale)
+            byte[] data = thermalData.imageData;
+            int imgMin = 255, imgMax = 0;
+            for (byte b : data) {
+                int v = b & 0xFF;
+                if (v < imgMin) imgMin = v;
+                if (v > imgMax) imgMax = v;
+            }
 
-            bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+            float range = Math.max(1, imgMax - imgMin);
+
+            for (int i = 0; i < data.length; i++) {
+                // Normalize to 0-1 based on image range
+                float normalized = ((data[i] & 0xFF) - imgMin) / range;
+
+                // Apply contrast
+                normalized = 0.5f + (normalized - 0.5f) * contrast;
+                normalized = Math.max(0f, Math.min(1f, normalized));
+
+                bitmapPixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+            }
         }
 
         bitmap.setPixels(bitmapPixels, 0, ThermalData.WIDTH, 0, 0,
@@ -350,30 +571,40 @@ public class ThermalView extends View {
     }
 
     /**
-     * Draws a label near a marker, adjusting position to stay within bounds.
+     * Draws a label near a marker at screen coordinates (after canvas.restore()).
+     * Adjusts position to stay within view bounds.
      */
-    private void drawMarkerLabel(Canvas canvas, String text, float markerX, float markerY,
-                                  float left, float top, float right, float bottom) {
+    private void drawMarkerLabelAtScreen(Canvas canvas, String text, float screenX, float screenY) {
         float textWidth = textPaint.measureText(text);
         float textHeight = textPaint.getTextSize();
         float offsetX = 16f;
         float offsetY = 8f;
 
+        // View bounds with margin
+        float viewRight = getWidth() - 8f;
+        float viewBottom = getHeight() - 8f;
+        float viewLeft = 8f;
+        float viewTop = 8f;
+
         float x, y;
 
         // Position horizontally: prefer right, but go left if near right edge
-        if (markerX + offsetX + textWidth > right) {
-            x = markerX - offsetX - textWidth;
+        if (screenX + offsetX + textWidth > viewRight) {
+            x = screenX - offsetX - textWidth;
         } else {
-            x = markerX + offsetX;
+            x = screenX + offsetX;
         }
 
         // Position vertically: prefer below-center, but go above if near bottom
-        if (markerY + offsetY + textHeight > bottom) {
-            y = markerY - offsetY;
+        if (screenY + offsetY + textHeight > viewBottom) {
+            y = screenY - offsetY;
         } else {
-            y = markerY + offsetY;
+            y = screenY + offsetY;
         }
+
+        // Clamp to view bounds
+        x = Math.max(viewLeft, Math.min(viewRight - textWidth, x));
+        y = Math.max(viewTop + textHeight, Math.min(viewBottom, y));
 
         drawTextWithOutline(canvas, text, x, y);
     }
@@ -413,6 +644,84 @@ public class ThermalView extends View {
         String status = String.format(Locale.US, "%s | %.1fx | %.0f fps",
                 getColormapName(), scaleFactor, fps);
         canvas.drawText(status, textX, textY, hudTextPaint);
+    }
+
+    private void drawTemperatureScale(Canvas canvas) {
+        if (thermalData == null) return;
+
+        float padding = 12f;
+        float scaleWidth = 20f;
+        float scaleHeight = getHeight() * 0.45f;
+        float scaleRight = getWidth() - padding;
+        float scaleLeft = scaleRight - scaleWidth;
+        float scaleTop = (getHeight() - scaleHeight) / 2f;
+        float scaleBottom = scaleTop + scaleHeight;
+
+        // Create/update scale gradient bitmap
+        int bitmapHeight = (int) scaleHeight;
+        if (scaleBitmap == null || scaleBitmap.getHeight() != bitmapHeight) {
+            scaleBitmap = Bitmap.createBitmap(1, bitmapHeight, Bitmap.Config.ARGB_8888);
+            scalePixels = new int[bitmapHeight];
+        }
+
+        // Fill with colormap gradient (top = hot, bottom = cold)
+        for (int i = 0; i < bitmapHeight; i++) {
+            float normalized = 1f - (float) i / (bitmapHeight - 1);
+            scalePixels[i] = Colormaps.applyNormalized(currentColormap, normalized);
+        }
+        scaleBitmap.setPixels(scalePixels, 0, 1, 0, 0, 1, bitmapHeight);
+
+        // Draw scale background
+        canvas.drawRoundRect(scaleLeft - 3, scaleTop - 3, scaleRight + 3, scaleBottom + 3,
+                4f, 4f, hudBackgroundPaint);
+
+        // Draw scale gradient
+        RectF scaleRect = new RectF(scaleLeft, scaleTop, scaleRight, scaleBottom);
+        canvas.drawBitmap(scaleBitmap, null, scaleRect, bitmapPaint);
+
+        // Draw temperature labels
+        hudTextPaint.setTextSize(20f);
+
+        // Use effective temps (locked or actual)
+        float displayMaxTemp = getEffectiveMaxTemp();
+        float displayMinTemp = getEffectiveMinTemp();
+
+        // Max temperature (top)
+        String maxLabel = String.format(Locale.US, "%.1f\u00B0", displayMaxTemp);
+        canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 6f,
+                scaleTop + 6f, hudTextPaint);
+
+        // Min temperature (bottom)
+        String minLabel = String.format(Locale.US, "%.1f\u00B0", displayMinTemp);
+        canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 6f,
+                scaleBottom, hudTextPaint);
+
+        // Draw lock indicator when scale is locked
+        if (scaleLocked) {
+            String lockIcon = "\uD83D\uDD12";  // Lock emoji
+            hudTextPaint.setTextSize(16f);
+            canvas.drawText(lockIcon, scaleRight - hudTextPaint.measureText(lockIcon) / 2f - scaleWidth / 2f,
+                    scaleTop - 10f, hudTextPaint);
+        }
+
+        if (SHOW_AVERAGE) {
+            // Average temperature (middle, with marker)
+            float avgNormalized = (thermalData.avgTemp - thermalData.minTemp) /
+                    (thermalData.maxTemp - thermalData.minTemp);
+            avgNormalized = Math.max(0f, Math.min(1f, avgNormalized));
+            float avgY = scaleBottom - avgNormalized * scaleHeight;
+
+            // Draw avg marker line
+            crosshairPaint.setStrokeWidth(2f);
+            canvas.drawLine(scaleLeft - 4f, avgY, scaleRight + 4f, avgY, crosshairPaint);
+
+            String avgLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.avgTemp);
+            float avgLabelX = scaleLeft - hudTextPaint.measureText(avgLabel) - 8f;
+            canvas.drawText(avgLabel, avgLabelX, avgY + 5f, hudTextPaint);
+        }
+
+        // Reset text size
+        hudTextPaint.setTextSize(32f);
     }
 
     @Override
@@ -456,7 +765,12 @@ public class ThermalView extends View {
 
             float viewWidth = getWidth();
             float viewHeight = getHeight();
-            float imageAspect = (float) ThermalData.WIDTH / ThermalData.HEIGHT;
+
+            // Account for rotation in aspect ratio
+            boolean isRotated90or270 = (rotationDegrees == 90 || rotationDegrees == 270);
+            float imageAspect = isRotated90or270
+                    ? (float) ThermalData.HEIGHT / ThermalData.WIDTH
+                    : (float) ThermalData.WIDTH / ThermalData.HEIGHT;
             float viewAspect = viewWidth / viewHeight;
 
             float drawWidth, drawHeight;
@@ -470,26 +784,65 @@ public class ThermalView extends View {
 
             float left = (viewWidth - drawWidth) / 2f;
             float top = (viewHeight - drawHeight) / 2f;
+            float centerX = left + drawWidth / 2f;
+            float centerY = top + drawHeight / 2f;
 
-            // Transform tap coordinates back to image space
-            float tapViewX = (e.getX() - viewWidth / 2f) / scaleFactor + viewWidth / 2f - translateX;
-            float tapViewY = (e.getY() - viewHeight / 2f) / scaleFactor + viewHeight / 2f - translateY;
+            // Undo transforms in REVERSE order of how they're applied in onDraw:
+            // onDraw order: zoom/pan -> flip -> rotate
+            // Undo order: rotate -> flip -> zoom/pan
 
-            int imgX = (int) ((tapViewX - left) / drawWidth * ThermalData.WIDTH);
-            int imgY = (int) ((tapViewY - top) / drawHeight * ThermalData.HEIGHT);
+            // Start with screen coordinates
+            float tapViewX = e.getX();
+            float tapViewY = e.getY();
+
+            // Step 1: Undo zoom/pan to get to the coordinate space where flip/rotate are applied
+            tapViewX = (tapViewX - viewWidth / 2f) / scaleFactor + viewWidth / 2f - translateX;
+            tapViewY = (tapViewY - viewHeight / 2f) / scaleFactor + viewHeight / 2f - translateY;
+
+            // Step 2: Undo rotation (rotate in opposite direction around center)
+            float dx = tapViewX - centerX;
+            float dy = tapViewY - centerY;
+            double radians = Math.toRadians(-rotationDegrees);
+            float rotatedDx = (float) (dx * Math.cos(radians) - dy * Math.sin(radians));
+            float rotatedDy = (float) (dx * Math.sin(radians) + dy * Math.cos(radians));
+            if (isRotated90or270 && !isMirrored()) {
+                tapViewX = centerX - rotatedDx;
+                tapViewY = centerY - rotatedDy;
+            } else {
+                tapViewX = centerX + rotatedDx;
+                tapViewY = centerY + rotatedDy;
+            }
+
+            // Step 3: Undo horizontal flip (only if not in mirror/selfie mode)
+            if (!mirrored) {
+                tapViewX = centerX - (tapViewX - centerX);
+            }
+
+            // Convert to image coordinates
+            // For rotated images, the destRect dimensions are swapped
+            float imgWidth, imgHeight;
+            if (isRotated90or270) {
+                imgWidth = drawHeight;
+                imgHeight = drawWidth;
+            } else {
+                imgWidth = drawWidth;
+                imgHeight = drawHeight;
+            }
+            float imgLeft = centerX - imgWidth / 2f;
+            float imgTop = centerY - imgHeight / 2f;
+
+            int imgX = (int) ((tapViewX - imgLeft) / imgWidth * ThermalData.WIDTH);
+            int imgY = (int) ((tapViewY - imgTop) / imgHeight * ThermalData.HEIGHT);
 
             if (imgX >= 0 && imgX < ThermalData.WIDTH && imgY >= 0 && imgY < ThermalData.HEIGHT) {
-                // For now, we show the grayscale value - actual temp would need thermal data access
-                // The thermal data is in the bottom half of the frame which we don't have direct access to here
-                // We'll approximate based on the visual intensity
                 tapX = imgX;
                 tapY = imgY;
                 tapTime = System.currentTimeMillis();
 
-                // Approximate temperature based on min/max range and pixel intensity
-                int pixelVal = thermalData.imageData[imgY * ThermalData.WIDTH + imgX] & 0xFF;
-                float normalized = pixelVal / 255f;
-                tapTemp = thermalData.minTemp + normalized * (thermalData.maxTemp - thermalData.minTemp);
+                // Read temperature from linearly-normalized thermal image data.
+                // thermalImageData guarantees pixel 0 = minTemp, pixel 255 = maxTemp.
+                int pixelVal = thermalData.thermalImageData[imgY * ThermalData.WIDTH + imgX] & 0xFF;
+                tapTemp = thermalData.minTemp + (pixelVal / 255f) * (thermalData.maxTemp - thermalData.minTemp);
 
                 invalidate();
             }

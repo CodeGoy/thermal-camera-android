@@ -91,12 +91,19 @@ public class ThermalCamera {
      * Closes the camera and releases resources.
      */
     public void close() {
-        nativeClose();
-        isOpen = false;
+        Log.i(TAG, "Closing camera, isOpen=" + isOpen);
+        if (isOpen) {
+            nativeClose();
+            isOpen = false;
+        }
         frameCallback = null;
 
         if (connection != null) {
-            connection.close();
+            try {
+                connection.close();
+            } catch (Exception e) {
+                Log.w(TAG, "Error closing USB connection", e);
+            }
             connection = null;
         }
     }
@@ -121,12 +128,12 @@ public class ThermalCamera {
      */
     private class NativeFrameCallback {
         @SuppressWarnings("unused") // Called from JNI
-        public void onFrame(byte[] imageData,
+        public void onFrame(byte[] imageData, byte[] thermalImageData,
                            float centerTemp, float minTemp, float maxTemp, float avgTemp,
                            int minRow, int minCol, int maxRow, int maxCol) {
             if (frameCallback != null) {
                 ThermalData data = new ThermalData(
-                        imageData,
+                        imageData, thermalImageData,
                         centerTemp, minTemp, maxTemp, avgTemp,
                         minRow, minCol, maxRow, maxCol
                 );
@@ -144,6 +151,18 @@ public class ThermalCamera {
     public native int getFrameWidth();
     public native int getImageHeight();
     private native void nativeSetRoundingMode(int mode);
+    private native String nativeGetFormatInfo();
+
+    /**
+     * Gets camera format information including supported resolutions.
+     * @return String with format info, or null if camera not open
+     */
+    public String getFormatInfo() {
+        if (!isOpen) {
+            return null;
+        }
+        return nativeGetFormatInfo();
+    }
 
     /**
      * Sets the temperature rounding mode for display.

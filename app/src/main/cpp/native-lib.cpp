@@ -3,6 +3,8 @@
 #include <atomic>
 #include <mutex>
 #include <cmath>
+#include <thread>
+#include <chrono>
 #include <android/log.h>
 #include <libusb.h>
 #include "libuvc/libuvc.h"
@@ -10,6 +12,7 @@
 #define LOG_TAG "ThermalCamera"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 // Frame dimensions for Infiray P2 / Topdon TC001
@@ -178,6 +181,25 @@ static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
     maxTemp = roundTemperature(maxTemp);
     avgTemp = roundTemperature(avgTemp);
 
+    // Build linearly-normalized thermal image from raw 16-bit values.
+    // Guarantees: pixel 0 = minTemp, pixel 255 = maxTemp, linear in between.
+    // Used by the locked scale colormap path to avoid AGC-induced color jumps.
+    uint8_t thermalLinear[FRAME_WIDTH * THERMAL_HEIGHT];
+    {
+        float range = maxTemp - minTemp;
+        if (range < 0.001f) range = 0.001f;
+        for (int y = 0; y < THERMAL_HEIGHT; y++) {
+            for (int x = 0; x < FRAME_WIDTH; x++) {
+                uint8_t lo = thermal_data[y * stride + x * 2];
+                uint8_t hi = thermal_data[y * stride + x * 2 + 1];
+                uint16_t raw = lo | (hi << 8);
+                float norm = (rawToCelsius(raw) - minTemp) / range;
+                norm = fmaxf(0.0f, fminf(1.0f, norm));
+                thermalLinear[y * FRAME_WIDTH + x] = (uint8_t)(norm * 255.0f + 0.5f);
+            }
+        }
+    }
+
     // Call Java callback
     if (g_jvm && g_callback_obj && g_callback_method) {
         JNIEnv *env;
@@ -196,19 +218,25 @@ static void frameCallback(uvc_frame_t *frame, void *user_ptr) {
             return;
         }
 
-        // Create byte array for grayscale image
+        // Create byte arrays for camera-AGC grayscale and linear thermal image
         jbyteArray imageArray = env->NewByteArray(FRAME_WIDTH * IMAGE_HEIGHT);
         env->SetByteArrayRegion(imageArray, 0, FRAME_WIDTH * IMAGE_HEIGHT,
                                 reinterpret_cast<jbyte*>(grayscale));
 
-        // Call: onFrame(byte[] image, float centerTemp, float minTemp, float maxTemp,
-        //               float avgTemp, int minRow, int minCol, int maxRow, int maxCol)
+        jbyteArray thermalLinearArray = env->NewByteArray(FRAME_WIDTH * THERMAL_HEIGHT);
+        env->SetByteArrayRegion(thermalLinearArray, 0, FRAME_WIDTH * THERMAL_HEIGHT,
+                                reinterpret_cast<jbyte*>(thermalLinear));
+
+        // Call: onFrame(byte[] imageData, byte[] thermalImageData,
+        //               float centerTemp, float minTemp, float maxTemp, float avgTemp,
+        //               int minRow, int minCol, int maxRow, int maxCol)
         env->CallVoidMethod(g_callback_obj, g_callback_method,
-                           imageArray,
+                           imageArray, thermalLinearArray,
                            centerTemp, minTemp, maxTemp, avgTemp,
                            minRow, minCol, maxRow, maxCol);
 
         env->DeleteLocalRef(imageArray);
+        env->DeleteLocalRef(thermalLinearArray);
 
         if (attached) {
             g_jvm->DetachCurrentThread();
@@ -256,9 +284,25 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeOpen(
 
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    if (g_devh != nullptr) {
-        LOGE("Camera already open");
-        return JNI_FALSE;
+    // Clean up any stale state from previous session
+    if (g_devh != nullptr || g_ctx != nullptr) {
+        LOGW("Cleaning up stale camera state before opening");
+        if (g_streaming) {
+            uvc_stop_streaming(g_devh);
+            g_streaming = false;
+        }
+        if (g_devh) {
+            uvc_close(g_devh);
+            g_devh = nullptr;
+        }
+        if (g_ctx) {
+            uvc_exit(g_ctx);
+            g_ctx = nullptr;
+        }
+        // Reset hysteresis state
+        hasInitialized = false;
+        prevMinRow = prevMinCol = prevMaxRow = prevMaxCol = 0;
+        g_frame_count = 0;
     }
 
     LOGI("Opening camera with fd=%d, VID=%04x, PID=%04x", fd, vendorId, productId);
@@ -285,12 +329,26 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeOpen(
 
     // Wrap the Android USB file descriptor directly with libuvc
     // uvc_wrap takes: file descriptor, context, output device handle
-    res = uvc_wrap(fd, g_ctx, &g_devh);
-    if (res < 0) {
-        LOGE("uvc_wrap failed: %s", uvc_strerror(res));
-        uvc_exit(g_ctx);
-        g_ctx = nullptr;
-        return JNI_FALSE;
+    // Retry with delay if device is busy (common when reconnecting quickly)
+    // Note: If a kernel driver (V4L2) has claimed the device, retries won't help
+    const int maxRetries = 3;
+    const int retryDelayMs = 150;
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        res = uvc_wrap(fd, g_ctx, &g_devh);
+        if (res == UVC_SUCCESS) {
+            break;
+        }
+        if (res == UVC_ERROR_BUSY && attempt < maxRetries) {
+            LOGW("uvc_wrap returned BUSY, retrying in %dms (attempt %d/%d)",
+                 retryDelayMs, attempt, maxRetries);
+            std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
+        } else {
+            LOGE("uvc_wrap failed: %s (attempt %d/%d)", uvc_strerror(res), attempt, maxRetries);
+            uvc_exit(g_ctx);
+            g_ctx = nullptr;
+            return JNI_FALSE;
+        }
     }
 
     LOGI("Camera opened successfully");
@@ -318,10 +376,11 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeStartStream(
     // Store callback reference
     g_callback_obj = env->NewGlobalRef(callback);
     jclass callbackClass = env->GetObjectClass(callback);
-    // Signature: (byte[] image, float centerTemp, float minTemp, float maxTemp,
-    //             float avgTemp, int minRow, int minCol, int maxRow, int maxCol)V
+    // Signature: (byte[] imageData, byte[] thermalImageData,
+    //             float centerTemp, float minTemp, float maxTemp, float avgTemp,
+    //             int minRow, int minCol, int maxRow, int maxCol)V
     g_callback_method = env->GetMethodID(callbackClass, "onFrame",
-            "([BFFFFIIII)V");
+            "([B[BFFFFIIII)V");
 
     if (g_callback_method == nullptr) {
         LOGE("Failed to find onFrame method");
@@ -392,6 +451,10 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeStopStream(
     }
     g_callback_method = nullptr;
 
+    // Reset hysteresis state
+    hasInitialized = false;
+    prevMinRow = prevMinCol = prevMaxRow = prevMaxCol = 0;
+
     LOGI("Streaming stopped");
 }
 
@@ -422,6 +485,11 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeClose(
         uvc_exit(g_ctx);
         g_ctx = nullptr;
     }
+
+    // Reset hysteresis and frame state
+    hasInitialized = false;
+    prevMinRow = prevMinCol = prevMaxRow = prevMaxCol = 0;
+    g_frame_count = 0;
 
     LOGI("Camera closed");
 }
@@ -454,4 +522,91 @@ Java_com_breyt_thermalcamera_ThermalCamera_nativeSetRoundingMode(
         jint mode) {
     g_rounding_mode = mode;
     LOGI("Rounding mode set to %d", mode);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_breyt_thermalcamera_ThermalCamera_nativeGetFormatInfo(
+        JNIEnv *env,
+        jobject /* this */) {
+
+    if (g_devh == nullptr) {
+        return env->NewStringUTF("Camera not open");
+    }
+
+    std::string info;
+
+    // Get device descriptor for camera name
+    uvc_device_t *dev = uvc_get_device(g_devh);
+    if (dev) {
+        uvc_device_descriptor_t *desc;
+        if (uvc_get_device_descriptor(dev, &desc) == UVC_SUCCESS) {
+            if (desc->product) {
+                info += "Device: ";
+                info += desc->product;
+                info += "\n";
+            }
+            if (desc->manufacturer) {
+                info += "Manufacturer: ";
+                info += desc->manufacturer;
+                info += "\n";
+            }
+            char vidpid[32];
+            snprintf(vidpid, sizeof(vidpid), "VID: %04x, PID: %04x\n", desc->idVendor, desc->idProduct);
+            info += vidpid;
+            uvc_free_device_descriptor(desc);
+        }
+    }
+
+    info += "\nSupported formats:\n";
+
+    // Iterate through format descriptors
+    const uvc_format_desc_t *format_desc = uvc_get_format_descs(g_devh);
+    while (format_desc != nullptr) {
+        // Format type
+        const char *format_name = "Unknown";
+        switch (format_desc->bDescriptorSubtype) {
+            case UVC_VS_FORMAT_UNCOMPRESSED:
+                // Check GUID for specific format
+                if (format_desc->guidFormat[0] == 'Y' && format_desc->guidFormat[1] == 'U' &&
+                    format_desc->guidFormat[2] == 'Y' && format_desc->guidFormat[3] == '2') {
+                    format_name = "YUY2 (YUYV)";
+                } else if (format_desc->guidFormat[0] == 'N' && format_desc->guidFormat[1] == 'V' &&
+                           format_desc->guidFormat[2] == '1' && format_desc->guidFormat[3] == '2') {
+                    format_name = "NV12";
+                } else {
+                    format_name = "Uncompressed";
+                }
+                break;
+            case UVC_VS_FORMAT_MJPEG:
+                format_name = "MJPEG";
+                break;
+            case UVC_VS_FORMAT_FRAME_BASED:
+                format_name = "Frame-based";
+                break;
+            default:
+                break;
+        }
+
+        info += "  ";
+        info += format_name;
+        info += ":\n";
+
+        // Iterate through frame descriptors for this format
+        const uvc_frame_desc_t *frame_desc = format_desc->frame_descs;
+        while (frame_desc != nullptr) {
+            char resolution[64];
+            // Calculate fps from interval (100ns units)
+            float fps = frame_desc->dwDefaultFrameInterval > 0
+                        ? 10000000.0f / frame_desc->dwDefaultFrameInterval
+                        : 0;
+            snprintf(resolution, sizeof(resolution), "    %dx%d @ %.0f fps\n",
+                     frame_desc->wWidth, frame_desc->wHeight, fps);
+            info += resolution;
+            frame_desc = frame_desc->next;
+        }
+
+        format_desc = format_desc->next;
+    }
+
+    return env->NewStringUTF(info.c_str());
 }

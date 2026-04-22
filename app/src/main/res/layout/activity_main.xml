@@ -40,62 +40,96 @@
         android:background="#CC000000"
         android:gravity="center"
         android:orientation="horizontal"
-        android:padding="8dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="20dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Colormap button -->
-        <Button
-            android:id="@+id/btn_colormap"
+        <!-- Colormap button with gradient preview -->
+        <FrameLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/colormap"
-            android:textSize="12sp"
-            android:layout_marginEnd="8dp" />
+            android:layout_height="48dp"
+            android:layout_marginEnd="12dp">
+            <ImageButton
+                android:id="@+id/btn_colormap"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start"
+                android:src="@drawable/ic_palette"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/desc_colormap" />
+            <View
+                android:id="@+id/colormap_preview"
+                android:layout_width="4dp"
+                android:layout_height="24dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginStart="48dp" />
+        </FrameLayout>
 
-        <!-- Contrast decrease -->
-        <Button
-            android:id="@+id/btn_contrast_down"
+        <!-- Rotate button with degree label and lock indicator -->
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginEnd="12dp">
+            <ImageButton
+                android:id="@+id/btn_rotate"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start"
+                android:src="@drawable/ic_rotate"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/desc_rotate" />
+            <ImageView
+                android:id="@+id/icon_rotation_lock"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_gravity="top|start"
+                android:layout_marginStart="32dp"
+                android:layout_marginTop="2dp"
+                android:src="@drawable/ic_lock"
+                android:visibility="visible" />
+            <TextView
+                android:id="@+id/txt_rotation"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginStart="44dp"
+                android:text="0°"
+                android:textColor="@android:color/white"
+                android:textSize="11sp" />
+        </FrameLayout>
+
+        <!-- Mirror -->
+        <ImageButton
+            android:id="@+id/btn_mirror"
             android:layout_width="48dp"
-            android:layout_height="wrap_content"
-            android:text="@string/contrast_down"
-            android:textSize="16sp" />
-
-        <!-- Contrast increase -->
-        <Button
-            android:id="@+id/btn_contrast_up"
-            android:layout_width="48dp"
-            android:layout_height="wrap_content"
-            android:text="@string/contrast_up"
-            android:textSize="16sp"
-            android:layout_marginEnd="8dp" />
-
-        <!-- Temperature rounding -->
-        <Button
-            android:id="@+id/btn_rounding"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/rounding_none"
-            android:textSize="12sp"
-            android:layout_marginEnd="8dp" />
-
-        <!-- Rotate -->
-        <Button
-            android:id="@+id/btn_rotate"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/rotate"
-            android:textSize="12sp"
-            android:layout_marginEnd="8dp" />
+            android:layout_height="48dp"
+            android:src="@drawable/ic_mirror"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/desc_mirror"
+            android:layout_marginEnd="12dp" />
 
         <!-- Screenshot -->
-        <Button
+        <ImageButton
             android:id="@+id/btn_screenshot"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/capture"
-            android:textSize="12sp" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_camera"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/desc_screenshot"
+            android:layout_marginEnd="12dp" />
+
+        <!-- Overflow menu -->
+        <ImageButton
+            android:id="@+id/btn_overflow"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_more"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/desc_more" />
 
     </LinearLayout>
 

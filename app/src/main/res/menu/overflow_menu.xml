@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_contrast_down"
+        android:title="@string/menu_contrast_down" />
+    <item
+        android:id="@+id/menu_contrast_up"
+        android:title="@string/menu_contrast_up" />
+    <item
+        android:id="@+id/menu_rounding_none"
+        android:title="@string/menu_rounding_none"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_rounding_0_2"
+        android:title="@string/menu_rounding_0_2"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_rounding_0_5"
+        android:title="@string/menu_rounding_0_5"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_show_scale"
+        android:title="@string/menu_show_scale"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_scale_lock"
+        android:title="@string/menu_scale_lock"
+        android:checkable="true" />
+    <item
+        android:id="@+id/menu_scale_adjust"
+        android:title="@string/menu_scale_adjust" />
+    <item
+        android:id="@+id/menu_camera_info"
+        android:title="@string/menu_camera_info" />
+</menu>
