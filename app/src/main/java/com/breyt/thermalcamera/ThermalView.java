@@ -103,11 +103,11 @@ public class ThermalView extends View {
         bitmapPixels = new int[ThermalData.WIDTH * ThermalData.HEIGHT];
 
         // Crosshair paints
-        crosshairPaint.setColor(Color.WHITE);
+        crosshairPaint.setColor(Color.RED);
         crosshairPaint.setStrokeWidth(2f);
-        crosshairPaint.setStyle(Paint.Style.STROKE);
+        crosshairPaint.setStyle(Paint.Style.FILL_AND_STROKE);
 
-        crosshairOutlinePaint.setColor(Color.BLACK);
+        crosshairOutlinePaint.setColor(Color.WHITE);
         crosshairOutlinePaint.setStrokeWidth(4f);
         crosshairOutlinePaint.setStyle(Paint.Style.STROKE);
 
@@ -116,11 +116,11 @@ public class ThermalView extends View {
 
         // Text paints
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(28f);
+        textPaint.setTextSize(48f);
         textPaint.setStyle(Paint.Style.FILL);
 
         textOutlinePaint.setColor(Color.BLACK);
-        textOutlinePaint.setTextSize(28f);
+        textOutlinePaint.setTextSize(48f);
         textOutlinePaint.setStyle(Paint.Style.STROKE);
         textOutlinePaint.setStrokeWidth(3f);
 
@@ -129,7 +129,7 @@ public class ThermalView extends View {
         hudBackgroundPaint.setStyle(Paint.Style.FILL);
 
         hudTextPaint.setColor(Color.WHITE);
-        hudTextPaint.setTextSize(32f);
+        hudTextPaint.setTextSize(52f);
 
         // Gesture detectors
         scaleDetector = new ScaleGestureDetector(getContext(), new ScaleListener());
@@ -441,18 +441,24 @@ public class ThermalView extends View {
 
         // Draw crosshairs and min/max markers only when enabled
         float maxViewX = 0, maxViewY = 0, minViewX = 0, minViewY = 0;
+
+
+        // Draw crosshairs at center
+        float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
+        float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
+        float crossSize = 20f;
+
+        // TODO : draw width
+        // crosshair outline
+        //canvas.drawLine(crossCenterX - crossSize, crossCenterY,crossCenterX + crossSize, crossCenterY, crosshairOutlinePaint);
+        //canvas.drawLine(crossCenterX, crossCenterY - crossSize, crossCenterX, crossCenterY + crossSize, crosshairOutlinePaint);
+        // crosshair inner
+        canvas.drawLine(crossCenterX - crossSize, crossCenterY,crossCenterX + crossSize, crossCenterY, crosshairPaint);
+        canvas.drawLine(crossCenterX, crossCenterY - crossSize, crossCenterX, crossCenterY + crossSize, crosshairPaint);
+
+
+
         if (showMinMaxPoints) {
-            // Draw crosshairs at center
-            float crossCenterX = destRect.left + (ThermalData.WIDTH / 2f) * scaleX;
-            float crossCenterY = destRect.top + (ThermalData.HEIGHT / 2f) * scaleY;
-            float crossSize = 20f;
-
-            // Inner
-            canvas.drawLine(crossCenterX - crossSize, crossCenterY,
-                    crossCenterX + crossSize, crossCenterY, crosshairPaint);
-            canvas.drawLine(crossCenterX, crossCenterY - crossSize,
-                    crossCenterX, crossCenterY + crossSize, crosshairPaint);
-
             // Draw max temperature marker (red circle)
             maxViewX = destRect.left + thermalData.maxCol * scaleX;
             maxViewY = destRect.top + thermalData.maxRow * scaleY;
@@ -611,8 +617,8 @@ public class ThermalView extends View {
 
     private void drawHud(Canvas canvas) {
         float padding = 16f;
-        float lineHeight = 36f;
-        float hudWidth = 280f;
+        float lineHeight = 48f;
+        float hudWidth = 380f;
         float hudHeight = lineHeight * 4 + padding * 2;
         float hudLeft = padding;
         float hudTop = getHeight() - hudHeight - padding;
@@ -651,7 +657,7 @@ public class ThermalView extends View {
 
         float padding = 12f;
         float scaleWidth = 20f;
-        float scaleHeight = getHeight() * 0.45f;
+        float scaleHeight = getHeight() * 0.66f;
         float scaleRight = getWidth() - padding;
         float scaleLeft = scaleRight - scaleWidth;
         float scaleTop = (getHeight() - scaleHeight) / 2f;
@@ -680,7 +686,7 @@ public class ThermalView extends View {
         canvas.drawBitmap(scaleBitmap, null, scaleRect, bitmapPaint);
 
         // Draw temperature labels
-        hudTextPaint.setTextSize(20f);
+        hudTextPaint.setTextSize(48f);
 
         // Use effective temps (locked or actual)
         float displayMaxTemp = getEffectiveMaxTemp();
@@ -721,7 +727,7 @@ public class ThermalView extends View {
         }
 
         // Reset text size
-        hudTextPaint.setTextSize(32f);
+        hudTextPaint.setTextSize(48f);
     }
 
     @Override
