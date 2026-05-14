@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/menu_contrast_down"
         android:title="@string/menu_contrast_down" />
@@ -26,6 +27,11 @@
         android:id="@+id/menu_scale_lock"
         android:title="@string/menu_scale_lock"
         android:checkable="true" />
+    <item
+        android:id="@+id/menu_temp_conversion"
+        android:checkable="true"
+        android:enabled="true"
+        android:title="@string/menu_temp_conversion" />
     <item
         android:id="@+id/menu_scale_adjust"
         android:title="@string/menu_scale_adjust" />

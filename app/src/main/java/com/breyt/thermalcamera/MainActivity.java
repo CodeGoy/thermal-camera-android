@@ -405,6 +405,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         // Only show scale adjust when scale is locked
         popup.getMenu().findItem(R.id.menu_scale_adjust).setVisible(thermalView.isScaleLocked());
 
+        // update tempConversion menu item
+        popup.getMenu().findItem(R.id.menu_temp_conversion).setChecked(thermalView.isTempConvert());
+        
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
             boolean keepOpen = false;
@@ -444,6 +447,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 showScaleAdjustDialog();
             } else if (id == R.id.menu_camera_info) {
                 showCameraInfoDialog();
+            } else if (id == R.id.menu_temp_conversion) {
+                thermalView.setTempConversion();
+                keepOpen = true;
             }
 
             if (keepOpen) {

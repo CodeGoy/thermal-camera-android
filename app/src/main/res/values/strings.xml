@@ -27,6 +27,7 @@
     <string name="menu_show_scale">Show min/max points</string>
     <string name="menu_scale_lock">Lock scale</string>
     <string name="menu_scale_adjust">Adjust scale range\u2026</string>
+    <string name="menu_temp_conversion">Fahrenheit</string>
     <string name="dialog_scale_min">Min temperature (\u00B0C)</string>
     <string name="dialog_scale_max">Max temperature (\u00B0C)</string>
 </resources>

@@ -49,6 +49,13 @@ public class ThermalView extends View {
     // Mirror mode (horizontal flip for selfie mode)
     private boolean mirrored = false;
 
+    // temp conversion
+    private boolean convertTemp = true;
+
+    public boolean isTempConvert() {
+        return convertTemp;
+    }
+
     // Temperature scale and min/max points display
     private boolean showMinMaxPoints = false;
     private Bitmap scaleBitmap;
@@ -302,6 +309,16 @@ public class ThermalView extends View {
         invalidate();
     }
 
+    /* Sets Temp conversion from C to F boolean */
+    public void setTempConversion() {
+        convertTemp=!convertTemp;
+    }
+
+    /* Converts float C to F */
+    public static float convertCtoF(float celsius) {
+        return (celsius * 1.8f) + 32.0f;
+    }
+
     /**
      * Returns whether the temperature scale is locked.
      */
@@ -456,8 +473,6 @@ public class ThermalView extends View {
         canvas.drawLine(crossCenterX - crossSize, crossCenterY,crossCenterX + crossSize, crossCenterY, crosshairPaint);
         canvas.drawLine(crossCenterX, crossCenterY - crossSize, crossCenterX, crossCenterY + crossSize, crosshairPaint);
 
-
-
         if (showMinMaxPoints) {
             // Draw max temperature marker (red circle)
             maxViewX = destRect.left + thermalData.maxCol * scaleX;
@@ -494,10 +509,17 @@ public class ThermalView extends View {
             pts[2] = minViewX; pts[3] = minViewY;
             matrix.mapPoints(pts);
 
-            String maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
-            drawMarkerLabelAtScreen(canvas, maxLabel, pts[0], pts[1]);
+            String maxLabel;
+            String minLabel;
+            if (convertTemp) {
+                maxLabel = String.format(Locale.US, "%.1f\u00B0", convertCtoF(thermalData.maxTemp));
+                minLabel = String.format(Locale.US, "%.1f\u00B0", convertCtoF(thermalData.minTemp));
+            } else {
+                maxLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.maxTemp);
+                minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+            }
 
-            String minLabel = String.format(Locale.US, "%.1f\u00B0", thermalData.minTemp);
+            drawMarkerLabelAtScreen(canvas, maxLabel, pts[0], pts[1]);
             drawMarkerLabelAtScreen(canvas, minLabel, pts[2], pts[3]);
         }
 
@@ -632,18 +654,27 @@ public class ThermalView extends View {
 
         // Center temperature
         hudTextPaint.setColor(Color.WHITE);
-        canvas.drawText(String.format(Locale.US, "Center: %.1f\u00B0C", thermalData.centerTemp),
-                textX, textY, hudTextPaint);
-
+        if (convertTemp) {
+            canvas.drawText(String.format(Locale.US, "Center: %.1f\u00B0F", convertCtoF(thermalData.centerTemp)), textX, textY, hudTextPaint);
+        } else {
+            canvas.drawText(String.format(Locale.US, "Center: %.1f\u00B0C", thermalData.centerTemp), textX, textY, hudTextPaint);
+        }
+        
         // Range
         textY += lineHeight;
-        canvas.drawText(String.format(Locale.US, "Range: %.1f - %.1f\u00B0C",
-                thermalData.minTemp, thermalData.maxTemp), textX, textY, hudTextPaint);
+        if (convertTemp) {
+            canvas.drawText(String.format(Locale.US, "Range: %.1f - %.1f\u00B0F", convertCtoF(thermalData.minTemp), convertCtoF(thermalData.maxTemp)), textX, textY, hudTextPaint);
+        } else {
+            canvas.drawText(String.format(Locale.US, "Range: %.1f - %.1f\u00B0C", thermalData.minTemp, thermalData.maxTemp), textX, textY, hudTextPaint);
+        }
 
         // Average
         textY += lineHeight;
-        canvas.drawText(String.format(Locale.US, "Avg: %.1f\u00B0C", thermalData.avgTemp),
-                textX, textY, hudTextPaint);
+        if (convertTemp) {
+            canvas.drawText(String.format(Locale.US, "Avg: %.1f\u00B0F", convertCtoF(thermalData.avgTemp)), textX, textY, hudTextPaint);
+        } else {
+            canvas.drawText(String.format(Locale.US, "Avg: %.1f\u00B0C", thermalData.avgTemp), textX, textY, hudTextPaint);
+        }
 
         // Status line: colormap, zoom, fps
         textY += lineHeight;
@@ -691,16 +722,21 @@ public class ThermalView extends View {
         // Use effective temps (locked or actual)
         float displayMaxTemp = getEffectiveMaxTemp();
         float displayMinTemp = getEffectiveMinTemp();
-
+        
+        String maxLabel;
+        String minLabel;
+        if (convertTemp) {
+            maxLabel = String.format(Locale.US, "%.1f\u00B0", convertCtoF(displayMaxTemp));
+            minLabel = String.format(Locale.US, "%.1f\u00B0", convertCtoF(displayMinTemp));
+        } else {
+            maxLabel = String.format(Locale.US, "%.1f\u00B0", displayMaxTemp);
+            minLabel = String.format(Locale.US, "%.1f\u00B0", displayMinTemp);
+        }
         // Max temperature (top)
-        String maxLabel = String.format(Locale.US, "%.1f\u00B0", displayMaxTemp);
-        canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 6f,
-                scaleTop + 6f, hudTextPaint);
+        canvas.drawText(maxLabel, scaleLeft - hudTextPaint.measureText(maxLabel) - 6f, scaleTop + 6f, hudTextPaint);
 
         // Min temperature (bottom)
-        String minLabel = String.format(Locale.US, "%.1f\u00B0", displayMinTemp);
-        canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 6f,
-                scaleBottom, hudTextPaint);
+        canvas.drawText(minLabel, scaleLeft - hudTextPaint.measureText(minLabel) - 6f, scaleBottom, hudTextPaint);
 
         // Draw lock indicator when scale is locked
         if (scaleLocked) {
