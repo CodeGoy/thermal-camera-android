@@ -63,6 +63,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private static final String PREF_COLORMAP = "colormap";
     private static final String PREF_ROTATION = "rotation";
     private static final String PREF_MIRRORED = "mirrored";
+    private static final String PREF_TEMP_CONV = "tempConvert";
     private static final String PREF_ROUNDING = "rounding";
     private static final String PREF_ROTATION_LOCK = "rotationLock";
     private static final String PREF_SHOW_SCALE = "showScale";
@@ -449,6 +450,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 showCameraInfoDialog();
             } else if (id == R.id.menu_temp_conversion) {
                 thermalView.setTempConversion();
+                saveSettings();
                 keepOpen = true;
             }
 
@@ -1012,6 +1014,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         editor.putFloat(PREF_CONTRAST, thermalView.getContrast());
         editor.putInt(PREF_COLORMAP, thermalView.getColormapIndex());
         editor.putInt(PREF_ROTATION, thermalView.getImageRotation());
+        editor.putBoolean(PREF_TEMP_CONV, thermalView.isTempConvert());
         editor.putBoolean(PREF_MIRRORED, thermalView.isMirrored());
         editor.putInt(PREF_ROUNDING, currentRoundingMode);
         editor.putBoolean(PREF_ROTATION_LOCK, rotationLockEnabled);
@@ -1028,6 +1031,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         thermalView.setColormapIndex(prefs.getInt(PREF_COLORMAP, 0));
         thermalView.setRotation(prefs.getInt(PREF_ROTATION, 0));
         thermalView.setMirrored(prefs.getBoolean(PREF_MIRRORED, false));
+        thermalView.setTempConversionBool(prefs.getBoolean(PREF_TEMP_CONV, false));
         currentRoundingMode = prefs.getInt(PREF_ROUNDING, ThermalCamera.ROUNDING_NONE);
         thermalCamera.setRoundingMode(currentRoundingMode);
         rotationLockEnabled = prefs.getBoolean(PREF_ROTATION_LOCK, true);

@@ -314,6 +314,10 @@ public class ThermalView extends View {
         convertTemp=!convertTemp;
     }
 
+    public void setTempConversionBool(boolean set) {
+        convertTemp=set;
+    }
+
     /* Converts float C to F */
     public static float convertCtoF(float celsius) {
         return (celsius * 1.8f) + 32.0f;
