@@ -451,7 +451,6 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             } else if (id == R.id.menu_temp_conversion) {
                 thermalView.setTempConversion();
                 saveSettings();
-                keepOpen = true;
             }
 
             if (keepOpen) {

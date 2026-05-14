@@ -129,7 +129,7 @@ public class ThermalView extends View {
         textOutlinePaint.setColor(Color.BLACK);
         textOutlinePaint.setTextSize(48f);
         textOutlinePaint.setStyle(Paint.Style.STROKE);
-        textOutlinePaint.setStrokeWidth(3f);
+        textOutlinePaint.setStrokeWidth(8f);
 
         // HUD paints
         hudBackgroundPaint.setColor(Color.argb(160, 0, 0, 0));
@@ -532,7 +532,12 @@ public class ThermalView extends View {
             float[] tapPts = new float[2];
             tapPts[0] = tapViewX; tapPts[1] = tapViewY;
             matrix.mapPoints(tapPts);
-            String tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
+            String tapLabel;
+            if (convertTemp) {
+                tapLabel = String.format(Locale.US, "%.1f\u00B0", convertCtoF(tapTemp));
+            } else {
+                tapLabel = String.format(Locale.US, "%.1f\u00B0", tapTemp);
+            }
             drawMarkerLabelAtScreen(canvas, tapLabel, tapPts[0], tapPts[1]);
         }
 
