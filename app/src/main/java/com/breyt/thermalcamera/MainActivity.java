@@ -65,6 +65,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     private static final String PREF_ROTATION = "rotation";
     private static final String PREF_MIRRORED = "mirrored";
     private static final String PREF_TEMP_CONV = "tempConvert";
+    private static final String PREF_DISABLE_SCALE = "disableScale";
     private static final String PREF_ROUNDING = "rounding";
     private static final String PREF_ROTATION_LOCK = "rotationLock";
     private static final String PREF_SHOW_SCALE = "showScale";
@@ -409,7 +410,10 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
 
         // update tempConversion menu item
         popup.getMenu().findItem(R.id.menu_temp_conversion).setChecked(thermalView.isTempConvert());
-        
+
+        // set disablesScale value
+        popup.getMenu().findItem(R.id.menu_disable_scale).setChecked(thermalView.isDisableScale());
+
         popup.setOnMenuItemClickListener(item -> {
             int id = item.getItemId();
             boolean keepOpen = false;
@@ -440,7 +444,6 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             } else if (id == R.id.menu_show_scale) {
                 thermalView.setShowMinMaxPoints(!thermalView.isShowingMinMaxPoints());
                 saveSettings();
-                keepOpen = true;
             } else if (id == R.id.menu_scale_lock) {
                 thermalView.setScaleLocked(!thermalView.isScaleLocked());
                 saveSettings();
@@ -454,6 +457,9 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 saveSettings();
             } else if (id == R.id.menu_app_info) {
                 showAppInfo();
+            } else if (id == R.id.menu_disable_scale) {
+                thermalView.setDisableScale();
+                saveSettings();
             }
 
             if (keepOpen) {
@@ -876,12 +882,13 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
     }
 
     private void showAppInfo() {
+        String addr = "https://github.com/CodeGoy/thermal-camera-android";
         new AlertDialog.Builder(this)
                 .setTitle("Thermal Camera")
                 // TODO : get app version programmatically
-                .setMessage("v1.0\nhttps://github.com/fbreitwieser/thermal-camera-android")
+                .setMessage("Forked from\nhttps://github.com/fbreitwieser/thermal-camera-android\n-----------------\nv0.1\n" + addr)
                 .setPositiveButton("Open", (dialog, which) -> {
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/fbreitwieser/thermal-camera-android"));
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(addr));
                     startActivity(browserIntent);
                 })
                 .setNegativeButton("Cancel", null)
@@ -1031,6 +1038,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         editor.putInt(PREF_ROTATION, thermalView.getImageRotation());
         editor.putBoolean(PREF_TEMP_CONV, thermalView.isTempConvert());
         editor.putBoolean(PREF_MIRRORED, thermalView.isMirrored());
+        editor.putBoolean(PREF_DISABLE_SCALE, thermalView.isDisableScale());
         editor.putInt(PREF_ROUNDING, currentRoundingMode);
         editor.putBoolean(PREF_ROTATION_LOCK, rotationLockEnabled);
         editor.putBoolean(PREF_SHOW_SCALE, thermalView.isShowingMinMaxPoints());
@@ -1047,6 +1055,7 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
         thermalView.setRotation(prefs.getInt(PREF_ROTATION, 0));
         thermalView.setMirrored(prefs.getBoolean(PREF_MIRRORED, false));
         thermalView.setTempConversionBool(prefs.getBoolean(PREF_TEMP_CONV, false));
+        thermalView.setDisableScaleBool(prefs.getBoolean(PREF_DISABLE_SCALE, false));
         currentRoundingMode = prefs.getInt(PREF_ROUNDING, ThermalCamera.ROUNDING_NONE);
         thermalCamera.setRoundingMode(currentRoundingMode);
         rotationLockEnabled = prefs.getBoolean(PREF_ROTATION_LOCK, true);

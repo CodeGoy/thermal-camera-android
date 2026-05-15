@@ -56,6 +56,20 @@ public class ThermalView extends View {
         return convertTemp;
     }
 
+    // disable temp scale
+    private boolean disableScale;
+
+    public void setDisableScaleBool(boolean set) {
+        disableScale = set;
+    }
+
+    public void setDisableScale() {
+        disableScale = !disableScale;
+    }
+    public boolean isDisableScale() {
+        return disableScale;
+    }
+
     // Temperature scale and min/max points display
     private boolean showMinMaxPoints = false;
     private Bitmap scaleBitmap;
@@ -655,8 +669,7 @@ public class ThermalView extends View {
         float hudTop = getHeight() - hudHeight - padding;
 
         // Background
-        canvas.drawRoundRect(hudLeft, hudTop, hudLeft + hudWidth, hudTop + hudHeight,
-                8f, 8f, hudBackgroundPaint);
+        canvas.drawRoundRect(hudLeft, hudTop, hudLeft + hudWidth, hudTop + hudHeight,8f, 8f, hudBackgroundPaint);
 
         float textX = hudLeft + padding;
         float textY = hudTop + padding + lineHeight - 8f;
@@ -687,12 +700,12 @@ public class ThermalView extends View {
 
         // Status line: colormap, zoom, fps
         textY += lineHeight;
-        String status = String.format(Locale.US, "%s | %.1fx | %.0f fps",
-                getColormapName(), scaleFactor, fps);
+        String status = String.format(Locale.US, "%s | %.1fx | %.0f fps", getColormapName(), scaleFactor, fps);
         canvas.drawText(status, textX, textY, hudTextPaint);
     }
 
     private void drawTemperatureScale(Canvas canvas) {
+        if (disableScale) return;
         if (thermalData == null) return;
 
         float padding = 12f;

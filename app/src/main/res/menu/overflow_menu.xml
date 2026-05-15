@@ -28,6 +28,10 @@
         android:title="@string/menu_scale_lock"
         android:checkable="true" />
     <item
+        android:id="@+id/menu_disable_scale"
+        android:checkable="true"
+        android:title="@string/menu_disable_scale" />
+    <item
         android:id="@+id/menu_temp_conversion"
         android:checkable="true"
         android:enabled="true"
