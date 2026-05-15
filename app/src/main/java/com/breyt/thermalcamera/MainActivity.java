@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.app.PendingIntent;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentValues;
@@ -451,6 +452,8 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
             } else if (id == R.id.menu_temp_conversion) {
                 thermalView.setTempConversion();
                 saveSettings();
+            } else if (id == R.id.menu_app_info) {
+                showAppInfo();
             }
 
             if (keepOpen) {
@@ -869,6 +872,19 @@ public class MainActivity extends AppCompatActivity implements ThermalCamera.Fra
                 .setTitle("Camera Info")
                 .setMessage(info)
                 .setPositiveButton("OK", null)
+                .show();
+    }
+
+    private void showAppInfo() {
+        new AlertDialog.Builder(this)
+                .setTitle("Thermal Camera")
+                // TODO : get app version programmatically
+                .setMessage("v1.0\nhttps://github.com/fbreitwieser/thermal-camera-android")
+                .setPositiveButton("Open", (dialog, which) -> {
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/fbreitwieser/thermal-camera-android"));
+                    startActivity(browserIntent);
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
     }
 

@@ -38,4 +38,7 @@
     <item
         android:id="@+id/menu_camera_info"
         android:title="@string/menu_camera_info" />
+    <item
+        android:id="@+id/menu_app_info"
+        android:title="@string/menu_app_info" />
 </menu>

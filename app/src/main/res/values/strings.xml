@@ -24,6 +24,7 @@
     <string name="menu_rounding_0_2">Rounding: 0.2\u00B0C</string>
     <string name="menu_rounding_0_5">Rounding: 0.5\u00B0C</string>
     <string name="menu_camera_info">Camera Info</string>
+    <string name="menu_app_info">App info</string>
     <string name="menu_show_scale">Show min/max points</string>
     <string name="menu_scale_lock">Lock scale</string>
     <string name="menu_scale_adjust">Adjust scale range\u2026</string>
