@@ -6,7 +6,7 @@ package com.breyt.thermalcamera;
  */
 public class Colormaps {
 
-    public static final String[] NAMES = {"Turbo", "Inferno", "Ironbow", "Grayscale", "RedHot"};
+    public static final String[] NAMES = {"ColdBlue", "Turbo", "Inferno", "Ironbow", "Grayscale", "RedHot"};
 
     /** Turbo colormap - perceptually uniform rainbow */
     public static final int[][] TURBO = {
@@ -125,7 +125,7 @@ public class Colormaps {
             GRAYSCALE[i] = new int[]{i, i, i};
         }
     }
-
+    /** RedHot colormap */
     public static final int[][] REDHOT;
 
     static {
@@ -140,8 +140,21 @@ public class Colormaps {
 
     }
 
+    /** ColdBlue colormap */
+    public static final int[][] COLDBLUE;
+    static {
+        COLDBLUE = new int[256][3];
+        int strength = 24;
+        for (int i = 0; i < strength; i++) {
+            COLDBLUE[i] = new int[]{0, 0, (255 - strength) + i};
+        }
+        for (int i = strength; i < 256; i++) {
+            COLDBLUE[i] = new int[]{i, i, i};
+        }
+    }
+
     /** All available colormaps */
-    public static final int[][][] ALL = {TURBO, INFERNO, IRONBOW, GRAYSCALE, REDHOT};
+    public static final int[][][] ALL = {COLDBLUE, TURBO, INFERNO, IRONBOW, GRAYSCALE, REDHOT};
 
     /**
      * Applies a colormap to a grayscale value.
