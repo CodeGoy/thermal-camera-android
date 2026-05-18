@@ -6,8 +6,6 @@ package com.breyt.thermalcamera;
  */
 public class Colormaps {
 
-    public static final String[] NAMES = {"ColdBlue", "Turbo", "Inferno", "Ironbow", "Grayscale", "RedHot"};
-
     /** Turbo colormap - perceptually uniform rainbow */
     public static final int[][] TURBO = {
         {48,18,59},{50,21,67},{51,24,74},{52,27,81},{53,30,88},{54,33,95},{55,36,102},{55,39,109},
@@ -125,13 +123,15 @@ public class Colormaps {
             GRAYSCALE[i] = new int[]{i, i, i};
         }
     }
+
+    private static final int strength = 32;
+
     /** RedHot colormap */
     public static final int[][] REDHOT;
 
     static {
         REDHOT = new int[256][3];
-        int strength = 24;
-        for (int i = 0; i < 256 - strength; i++) {
+        for (int i = 0; i < 255 - strength; i++) {
             REDHOT[i] = new int[]{i, i, i};
         }
         for (int i = 256 - strength; i < 256; i++) {
@@ -144,7 +144,6 @@ public class Colormaps {
     public static final int[][] COLDBLUE;
     static {
         COLDBLUE = new int[256][3];
-        int strength = 24;
         for (int i = 0; i < strength; i++) {
             COLDBLUE[i] = new int[]{0, 0, (255 - strength) + i};
         }
@@ -153,8 +152,52 @@ public class Colormaps {
         }
     }
 
+    /** ColdBlue And RedHot colormap */
+    public static final int[][] HNK;
+    static {
+        HNK = new int[256][3];
+        for (int i = 0; i < strength; i++) {
+            HNK[i] = new int[]{0, 0, (255 - strength) + i};
+        }
+        for (int i = strength; i < 256 - strength; i++) {
+            HNK[i] = new int[]{i, i, i};
+        }
+        for (int i = 256 - strength; i < 256; i++) {
+            HNK[i] = new int[]{i, 0, 0};
+        }
+    }
+
+    /** Redscale colormap */
+    public static final int[][] REDSCALE;
+    static {
+        REDSCALE = new int[256][3];
+        for (int i = 0; i < 256; i++) {
+            REDSCALE[i] = new int[]{i, 0, 0};
+        }
+    }
+
+    /** Greenscale colormap */
+    public static final int[][] GREENSCALE;
+    static {
+        GREENSCALE = new int[256][3];
+        for (int i = 0; i < 256; i++) {
+            GREENSCALE[i] = new int[]{0, i, 0};
+        }
+    }
+
+    /** Bluescale colormap */
+    public static final int[][] BLUESCALE;
+    static {
+        BLUESCALE = new int[256][3];
+        for (int i = 0; i < 256; i++) {
+            BLUESCALE[i] = new int[]{0, 0, i};
+        }
+    }
+
     /** All available colormaps */
-    public static final int[][][] ALL = {COLDBLUE, TURBO, INFERNO, IRONBOW, GRAYSCALE, REDHOT};
+    public static final String[] NAMES = {"redscale", "greenscale", "bluescale", "Turbo", "Inferno", "Ironbow", "ColdBlue", "RedHot", "Hot'N'Cold", "Grayscale"};
+
+    public static final int[][][] ALL = {REDSCALE, GREENSCALE, BLUESCALE, TURBO, INFERNO, IRONBOW, COLDBLUE, REDHOT, HNK, GRAYSCALE};
 
     /**
      * Applies a colormap to a grayscale value.
